@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Context Bridge</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <!-- ===== VIEW: Dashboard ===== -->
+  <section id="view-dashboard">
+    <header class="view-header">
+      <img src="../icons/icon48.png" alt="AI Context Bridge" class="header-logo">
+      <div class="header-actions">
+        <button class="btn btn-small btn-primary" data-nav="import">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import
+        </button>
+        <button class="btn btn-small btn-tertiary" data-nav="settings" title="Settings">&#9881; Settings</button>
+      </div>
+    </header>
+
+    <div class="card live-captures-card" id="live-captures-card" hidden>
+      <div class="card-header">
+        <span class="card-title"><span class="status-dot loading" style="display:inline-block;vertical-align:middle;margin-right:4px"></span> Live Captures</span>
+        <span class="card-subtitle">Active now</span>
+      </div>
+      <div class="card-body">
+        <div id="live-captures-list" class="live-captures-list"></div>
+      </div>
+    </div>
+
+    <div class="card stats-card">
+      <div class="card-header">
+        <span class="card-title">Knowledge Overview</span>
+        <span class="card-subtitle">Your library at a glance</span>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid stats-grid-hero">
+          <div class="stat stat-clickable" id="stat-conversations-card">
+            <span class="stat-value" id="stat-total">0</span>
+            <span class="stat-label">Conversations</span>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat stat-clickable" id="stat-summarized-card">
+            <span class="stat-value" id="stat-summarized">0</span>
+            <span class="stat-label">Summarized</span>
+          </div>
+          <div class="stat stat-clickable" id="stat-pending-card">
+            <span class="stat-value" id="stat-pending">0</span>
+            <span class="stat-label">Pending</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="topics-card">
+      <div class="card-header">
+        <span class="card-title">Topics <span class="card-subtitle">&middot; Recently active</span></span>
+        <div class="card-actions">
+          <button class="btn btn-small btn-secondary" id="topics-view-all">View All</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="topic-map" id="topic-map"></div>
+      </div>
+    </div>
+
+    <div class="card" id="platform-breakdown-card">
+      <div class="card-header">
+        <span class="card-title">Platform Breakdown</span>
+        <span class="card-subtitle">Tokens by source</span>
+      </div>
+      <div class="card-body">
+        <div class="platform-pills" id="platform-pills"></div>
+        <div class="donut-wrapper">
+          <svg class="donut-chart" viewBox="0 0 120 120" id="donut-chart"></svg>
+          <div class="donut-center" id="donut-center"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card summarize-card">
+      <div class="card-header">
+        <span class="card-title">Summarize</span>
+        <span class="card-subtitle">Extract insights from pending conversations</span>
+      </div>
+      <div class="card-body">
+        <div class="filter-bar">
+          <select id="summarize-platform" class="select-input" style="flex:1">
+            <option value="all">All Platforms</option>
+          </select>
+        </div>
+        <div class="filter-bar">
+          <div class="date-range-input" style="flex:1">
+            <input type="date" id="summarize-date-from" class="date-range-from" title="From date">
+            <span class="date-range-sep">&rarr;</span>
+            <input type="date" id="summarize-date-to" class="date-range-to" title="To date">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" id="dashboard-summarize-btn">Summarize Pending</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary btn-full" data-nav="analytics">Analytics</button>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: Import ===== -->
+  <section id="view-import" hidden>
+    <header class="view-header">
+      <button class="btn-back" data-back>&larr;</button>
+      <h2>Import</h2>
+    </header>
+
+    <div id="drop-zone" class="drop-zone">
+      <div class="drop-icon">&#128230;</div>
+      <p>Drop files here or click to browse</p>
+      <p class="hint">.zip .json .csv</p>
+      <input type="file" id="file-input" accept=".zip,.json,.csv" multiple hidden>
+    </div>
+
+    <div class="hint-box">
+      <strong>Supported formats:</strong>
+      <ul>
+        <li>ChatGPT — .zip export</li>
+        <li>Claude — .zip or .json export</li>
+        <li>Gemini — .json from Google Takeout</li>
+        <li>Copilot — .csv or .json export</li>
+      </ul>
+    </div>
+
+    <div id="import-progress" class="progress-box" hidden>
+      <div class="progress-bar"><div class="progress-fill" id="import-fill"></div></div>
+      <p id="import-status-text"></p>
+    </div>
+
+    <div id="import-results" hidden>
+      <div class="card">
+        <h3>Import Complete</h3>
+        <p id="import-results-text"></p>
+        <div class="btn-row">
+          <button class="btn btn-primary" data-nav="conversations">View Conversations</button>
+          <button class="btn btn-secondary" id="import-another-btn">Import More</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: Conversations ===== -->
+  <section id="view-conversations" hidden>
+    <div class="sticky-filters">
+      <header class="view-header">
+        <button class="btn-back" data-back>&larr;</button>
+        <h2>Conversations</h2>
+      </header>
+
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <input type="text" id="conv-search" class="search-input" placeholder="Search...">
+          <button type="button" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+        </div>
+        <select id="conv-source-filter" class="select-input">
+          <option value="all">All Sources</option>
+          <option value="chatgpt">ChatGPT</option>
+          <option value="claude">Claude</option>
+          <option value="gemini">Gemini</option>
+          <option value="copilot">Copilot</option>
+        </select>
+      </div>
+
+      <div class="filter-bar">
+        <select id="conv-status-filter" class="select-input" style="flex:1">
+          <option value="all">All Status</option>
+          <option value="summarized">Summarized</option>
+          <option value="pending">Pending</option>
+        </select>
+        <select id="conv-sort" class="select-input" style="flex:1">
+          <option value="date-desc">Newest First</option>
+          <option value="date-asc">Oldest First</option>
+          <option value="tokens-desc">Most Tokens</option>
+          <option value="tokens-asc">Fewest Tokens</option>
+          <option value="msgs-desc">Most Messages</option>
+          <option value="msgs-asc">Fewest Messages</option>
+        </select>
+      </div>
+
+      <details class="filter-advanced">
+        <summary>Advanced Filters</summary>
+        <div class="filter-advanced-body">
+          <div class="filter-row">
+            <label>Tokens:</label>
+            <input type="number" id="conv-tokens-min" class="filter-num" placeholder="Min">
+            <span>&ndash;</span>
+            <input type="number" id="conv-tokens-max" class="filter-num" placeholder="Max">
+          </div>
+          <div class="filter-row">
+            <label>Messages:</label>
+            <input type="number" id="conv-msgs-min" class="filter-num" placeholder="Min">
+            <span>&ndash;</span>
+            <input type="number" id="conv-msgs-max" class="filter-num" placeholder="Max">
+          </div>
+          <div class="filter-row">
+            <label>Date:</label>
+            <div class="date-range-input">
+              <input type="date" id="conv-date-from" class="date-range-from" title="From date">
+              <span class="date-range-sep">&rarr;</span>
+              <input type="date" id="conv-date-to" class="date-range-to" title="To date">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div id="conv-filter-summary" class="filter-summary"></div>
+    </div>
+
+    <div id="conv-list" class="item-list"></div>
+  </section>
+
+  <!-- ===== VIEW: Conversation Detail ===== -->
+  <section id="view-conversation-detail" class="view-pinned" hidden>
+    <div class="view-pinned-header">
+      <header class="view-header">
+        <button class="btn-back" data-back>&larr;</button>
+        <h2 id="conv-detail-title"></h2>
+      </header>
+      <div class="detail-meta" id="conv-detail-meta"></div>
+    </div>
+
+    <div class="view-pinned-scroll">
+      <div class="card" id="conv-summary-card" hidden>
+        <div class="card-header">
+          <span class="card-title">Summary</span>
+          <span class="card-subtitle">AI-generated overview</span>
+        </div>
+        <div class="card-body">
+          <div id="conv-summary-text"></div>
+          <div class="tag-list" id="conv-tags"></div>
+        </div>
+      </div>
+
+      <div class="card" id="conv-insights-card" hidden>
+        <div class="card-header">
+          <span class="card-title">Key Insights</span>
+          <span class="card-subtitle">What was learned</span>
+        </div>
+        <div class="card-body">
+          <ul id="conv-insights" class="insight-list"></ul>
+        </div>
+      </div>
+
+      <div class="card" id="conv-decisions-card" hidden>
+        <div class="card-header">
+          <span class="card-title">Decisions</span>
+          <span class="card-subtitle">Actions taken</span>
+        </div>
+        <div class="card-body">
+          <ul id="conv-decisions" class="insight-list"></ul>
+        </div>
+      </div>
+
+      <div class="card" id="conv-messages-card">
+        <div class="card-header">
+          <span class="card-title">Messages <span class="card-subtitle">&middot; <span id="conv-msg-count">0</span> total</span></span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <details class="messages-section-inner">
+            <summary class="messages-toggle">Show messages</summary>
+            <div id="conv-messages" style="padding:0.75rem"></div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div class="view-pinned-footer">
+      <div class="btn-row">
+        <button class="btn btn-primary" id="conv-summarize-btn" style="flex:1">Summarize</button>
+        <button class="btn btn-secondary" id="conv-more-btn" style="flex:0;padding:0.5rem 0.65rem" title="More options">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Conversation detail: Bottom drawer -->
+  <div class="bottom-drawer-overlay" id="conv-drawer" hidden>
+    <div class="bottom-drawer">
+      <div class="drawer-header">
+        <span class="drawer-title">More Options</span>
+        <button class="btn-icon" id="conv-drawer-close">&times;</button>
+      </div>
+      <ul class="drawer-list">
+        <li class="drawer-item" id="conv-drawer-export">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Export .md
+        </li>
+        <li class="drawer-item" id="conv-drawer-copy">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </li>
+        <li class="drawer-item drawer-item-danger" id="conv-drawer-delete">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Delete
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Conversation detail: Delete confirmation modal -->
+  <div class="modal-overlay" id="conv-delete-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Delete Conversation</h3>
+        <button class="btn-icon modal-close" id="conv-delete-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:var(--font-size-md);color:var(--color-text);margin-bottom:0.5rem">Are you sure you want to delete "<strong id="conv-delete-name"></strong>"?</p>
+        <p class="hint-text" style="margin-bottom:0">This will also remove any summaries associated with this conversation.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-tertiary" id="conv-delete-cancel">Cancel</button>
+        <button class="btn btn-danger" id="conv-delete-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VIEW: Knowledge Browser ===== -->
+  <section id="view-knowledge" class="view-pinned" hidden>
+    <div class="view-pinned-header">
+      <header class="view-header">
+        <button class="btn-back" data-back>&larr;</button>
+        <h2>Knowledge Base</h2>
+      </header>
+
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <input type="text" id="topic-search" class="search-input" placeholder="Search topics or tags...">
+          <button type="button" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+        </div>
+        <select id="topic-sort" class="select-input">
+          <option value="convs-desc">Most Conversations</option>
+          <option value="convs-asc">Fewest Conversations</option>
+          <option value="name-asc">Name A&ndash;Z</option>
+          <option value="name-desc">Name Z&ndash;A</option>
+          <option value="updated-desc">Recently Updated</option>
+          <option value="updated-asc">Oldest Updated</option>
+          <option value="created-desc">Newest Created</option>
+          <option value="created-asc">Oldest Created</option>
+        </select>
+      </div>
+
+      <div class="filter-bar">
+        <select id="topic-convs-filter" class="select-input" style="flex:1">
+          <option value="all">All Sizes</option>
+          <option value="5+">5+ conversations</option>
+          <option value="3+">3+ conversations</option>
+          <option value="1">1 conversation</option>
+        </select>
+      </div>
+
+      <div id="topic-filter-summary" class="filter-summary"></div>
+    </div>
+
+    <div class="view-pinned-scroll">
+      <div id="topic-list" class="item-list"></div>
+    </div>
+
+    <div class="view-pinned-footer">
+      <button class="btn btn-primary btn-full" id="knowledge-export-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export Knowledge
+      </button>
+    </div>
+
+    <!-- Export confirmation modal -->
+    <div class="modal-overlay" id="export-confirm-modal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Export Knowledge</h3>
+          <button class="btn-icon modal-close" id="export-confirm-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:var(--font-size-md);color:var(--color-text);margin-bottom:0.5rem">This will export all of your summarized knowledge as a Markdown file.</p>
+          <p class="hint-text" style="margin-bottom:0">Includes topics, key insights, decisions, and code snippets from all summarized conversations.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-tertiary" id="export-confirm-cancel">Cancel</button>
+          <button class="btn btn-primary" id="export-confirm-proceed">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: Topic Detail ===== -->
+  <section id="view-topic-detail" class="view-pinned" hidden>
+    <div class="view-pinned-header">
+      <header class="view-header">
+        <button class="btn-back" data-back>&larr;</button>
+        <h2 id="topic-detail-title"></h2>
+      </header>
+      <div class="detail-meta" id="topic-detail-meta"></div>
+    </div>
+
+    <div class="view-pinned-scroll">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Key Insights</span>
+          <span class="card-subtitle">What was learned</span>
+        </div>
+        <div class="card-body">
+          <ul id="topic-insights" class="insight-list"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Decisions</span>
+          <span class="card-subtitle">Actions taken</span>
+        </div>
+        <div class="card-body">
+          <ul id="topic-decisions" class="insight-list"></ul>
+        </div>
+      </div>
+
+      <div id="topic-code-section" class="card" hidden>
+        <div class="card-header">
+          <span class="card-title">Code Snippets</span>
+          <span class="card-subtitle">Saved code samples</span>
+        </div>
+        <div class="card-body">
+          <div id="topic-code"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Conversations <span class="card-subtitle">&middot; Related discussions</span></span>
+          <div class="card-actions">
+            <span class="card-subtitle" id="topic-conv-count"></span>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0.35rem">
+          <div id="topic-conversations" class="item-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view-pinned-footer">
+      <div class="btn-row">
+        <button class="btn btn-primary" id="topic-export-btn" style="flex:1">Export</button>
+        <button class="btn btn-secondary" id="topic-more-btn" style="flex:0;padding:0.5rem 0.65rem" title="More options">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Topic detail: Bottom drawer (outside view-pinned to avoid overflow clipping) -->
+  <div class="bottom-drawer-overlay" id="topic-drawer" hidden>
+    <div class="bottom-drawer">
+      <div class="drawer-header">
+        <span class="drawer-title">More Options</span>
+        <button class="btn-icon" id="topic-drawer-close">&times;</button>
+      </div>
+      <ul class="drawer-list">
+        <li class="drawer-item" id="drawer-export">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Export
+        </li>
+        <li class="drawer-item" id="drawer-rename">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Rename
+        </li>
+        <li class="drawer-item drawer-item-danger" id="drawer-delete">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Delete
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Topic detail: Rename modal -->
+  <div class="modal-overlay" id="topic-rename-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Rename Topic</h3>
+        <button class="btn-icon modal-close" id="topic-rename-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="topic-rename-input" class="text-input" placeholder="Topic name" style="width:100%">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-tertiary" id="topic-rename-cancel">Cancel</button>
+        <button class="btn btn-primary" id="topic-rename-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Topic detail: Delete confirmation modal -->
+  <div class="modal-overlay" id="topic-delete-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Delete Topic</h3>
+        <button class="btn-icon modal-close" id="topic-delete-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:var(--font-size-md);color:var(--color-text);margin-bottom:0.5rem">Are you sure you want to delete "<strong id="topic-delete-name"></strong>"?</p>
+        <p class="hint-text" style="margin-bottom:0">Summaries will be unlinked from this topic but not deleted.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-tertiary" id="topic-delete-cancel">Cancel</button>
+        <button class="btn btn-danger" id="topic-delete-confirm">Delete Topic</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VIEW: Export ===== -->
+  <section id="view-export" hidden>
+    <header class="view-header">
+      <button class="btn-back" data-back>&larr;</button>
+      <h2>Export Knowledge</h2>
+    </header>
+
+    <div class="card">
+      <h3>Export for:</h3>
+      <div class="radio-group" id="export-target">
+        <label><input type="radio" name="export-target" value="claude" checked> Claude (Project Knowledge)</label>
+        <label><input type="radio" name="export-target" value="chatgpt"> ChatGPT (Markdown)</label>
+        <label><input type="radio" name="export-target" value="gemini"> Gemini (Markdown)</label>
+        <label><input type="radio" name="export-target" value="markdown"> Universal Markdown</label>
+        <label><input type="radio" name="export-target" value="json"> JSON Backup</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Scope:</h3>
+      <div class="radio-group" id="export-scope">
+        <label><input type="radio" name="export-scope" value="all" checked> All topics</label>
+        <label><input type="radio" name="export-scope" value="selected"> Selected topics</label>
+      </div>
+      <div id="export-topic-select" class="checkbox-list" hidden></div>
+    </div>
+
+    <div class="card">
+      <h3>Include:</h3>
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="export-insights" checked> Key insights</label>
+        <label><input type="checkbox" id="export-code" checked> Code snippets</label>
+        <label><input type="checkbox" id="export-decisions" checked> Decisions</label>
+        <label><input type="checkbox" id="export-raw" > Raw conversations</label>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="export-download-btn">Export &amp; Download</button>
+  </section>
+
+  <!-- ===== VIEW: Conflict Detail ===== -->
+  <section id="view-conflict-detail" hidden>
+    <header class="view-header">
+      <button class="btn-back" data-back>&larr;</button>
+      <h2>Conflict</h2>
+    </header>
+
+    <div class="card" id="conflict-detail-card">
+      <div class="detail-meta" id="conflict-detail-meta"></div>
+      <div class="card" style="background:#fef2f2;margin:0.5rem 0">
+        <h4>Older</h4>
+        <p id="conflict-older-content"></p>
+      </div>
+      <div class="card" style="background:#eff6ff;margin:0.5rem 0">
+        <h4>Newer</h4>
+        <p id="conflict-newer-content"></p>
+      </div>
+      <div id="conflict-analysis" style="margin:0.5rem 0"></div>
+      <div id="conflict-recommendation" style="margin:0.5rem 0"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="conflict-keep-newer">Keep Newer</button>
+      <button class="btn btn-secondary" id="conflict-keep-older">Keep Older</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="conflict-keep-both">Keep Both</button>
+      <button class="btn btn-danger btn-small" id="conflict-dismiss">Dismiss</button>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: Analytics ===== -->
+  <section id="view-analytics" hidden>
+    <header class="view-header">
+      <button class="btn-back" data-back>&larr;</button>
+      <h2>Analytics</h2>
+    </header>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Knowledge Health</span>
+        <span class="card-subtitle">Overall score</span>
+        <div class="card-actions">
+          <button class="btn-icon info-btn" data-info="health">&#9432;</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="info-box" id="info-health" hidden>
+          <p>Your overall knowledge base health score (0&ndash;100), calculated from three factors:</p>
+          <ul>
+            <li><strong>Coverage (40%)</strong> &mdash; What percentage of your summaries have been used (injected, copied, exported, or viewed).</li>
+            <li><strong>Quality (30%)</strong> &mdash; Average usefulness score of the summaries you&rsquo;ve actually used.</li>
+            <li><strong>Recency (30%)</strong> &mdash; How recently any knowledge was accessed. Recent usage means your knowledge is current.</li>
+          </ul>
+          <p>&ldquo;Used / Total&rdquo; shows how many of your summarized conversations have at least one usage event.</p>
+        </div>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="stat-value" id="health-score">--</span>
+            <span class="stat-label">Health Score</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="health-used">--</span>
+            <span class="stat-label">Used / Total</span>
+          </div>
+        </div>
+        <p id="health-recommendation" class="status-text"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Trending</span>
+        <span class="card-subtitle">Rising usage this week</span>
+        <div class="card-actions">
+          <button class="btn-icon info-btn" data-info="trending">&#9432;</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="info-box" id="info-trending" hidden>
+          <p>Shows summaries with <strong>increasing usage</strong> over the last 7 days compared to the prior 7 days.</p>
+          <ul>
+            <li><strong>Rising</strong> &mdash; Usage went up 25%+ vs. previous week. This knowledge is becoming more valuable.</li>
+            <li><strong>Stable</strong> &mdash; Consistent usage. Reliable knowledge you use regularly.</li>
+            <li><strong>Declining</strong> &mdash; Usage dropped 25%+. Consider if this knowledge is still relevant.</li>
+          </ul>
+          <p>Usage actions include: injecting into AI chats, copying, exporting, viewing, and appearing in search results.</p>
+        </div>
+        <div id="trending-list" class="item-list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Stale</span>
+        <span class="card-subtitle">Unused for 30+ days</span>
+        <div class="card-actions">
+          <button class="btn-icon info-btn" data-info="stale">&#9432;</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="info-box" id="info-stale" hidden>
+          <p>Summaries that haven&rsquo;t been used in <strong>30+ days</strong> or have never been used at all.</p>
+          <ul>
+            <li><strong>Review</strong> these items &mdash; they may be outdated or no longer relevant.</li>
+            <li><strong>Prune</strong> low-value items to keep your knowledge base lean and healthy.</li>
+            <li><strong>Re-inject</strong> valuable items you forgot about to boost their usage score.</li>
+          </ul>
+          <p>Reducing stale knowledge improves your overall Health Score.</p>
+        </div>
+        <div id="stale-list" class="item-list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Usage by Source</span>
+        <span class="card-subtitle">Actions by platform</span>
+        <div class="card-actions">
+          <button class="btn-icon info-btn" data-info="source">&#9432;</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="info-box" id="info-source" hidden>
+          <p>Breaks down how your knowledge is being <strong>used across platforms</strong>.</p>
+          <ul>
+            <li><strong>Injections</strong> &mdash; Knowledge sent into an AI chat (highest value action).</li>
+            <li><strong>Copies</strong> &mdash; Content copied to clipboard.</li>
+            <li><strong>Exports</strong> &mdash; Included in an export file.</li>
+            <li><strong>Views</strong> &mdash; Opened in the conversation detail view.</li>
+          </ul>
+          <p>This helps you see which AI platforms benefit most from your knowledge base.</p>
+        </div>
+        <div id="usage-by-source"></div>
+      </div>
+    </div>
+
+    <div class="card" id="analytics-conflicts-card">
+      <div class="card-header">
+        <span class="card-title">Conflicts <span class="card-subtitle">&middot; <span id="conflict-open">0</span> open</span></span>
+        <div class="card-actions">
+          <button class="btn btn-small btn-secondary" id="conflict-scan-btn">Scan</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid" id="conflict-stats-row">
+          <div class="stat">
+            <span class="stat-value" id="conflict-open-count">0</span>
+            <span class="stat-label">Open</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="conflict-resolved">0</span>
+            <span class="stat-label">Resolved</span>
+          </div>
+        </div>
+        <div id="conflict-list" class="item-list" style="margin-top:0.5rem"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== VIEW: Settings ===== -->
+  <section id="view-settings" hidden>
+    <header class="view-header">
+      <button class="btn-back" data-back>&larr;</button>
+      <h2>Settings</h2>
+    </header>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">AI Providers</span>
+        <span class="card-subtitle">Configure your AI connections</span>
+      </div>
+      <div class="card-body">
+        <p class="hint-text">Providers are tried in priority order. If one fails, the next is used.</p>
+        <div id="provider-list" class="provider-list"></div>
+        <button class="btn btn-primary btn-full" id="add-provider-btn">+ Add Provider</button>
+      </div>
+    </div>
+
+    <!-- Provider Add/Edit Modal -->
+    <div class="modal-overlay" id="provider-modal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="provider-modal-title">Add Provider</h3>
+          <button class="btn-icon modal-close" id="provider-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="input-row">
+            <label>Type:</label>
+            <select id="provider-type-select" class="select-input" style="flex:1">
+              <option value="lana">Lana AI</option>
+              <option value="openai">OpenAI</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
+          <div class="input-row">
+            <label>Name:</label>
+            <input type="text" id="provider-name-input" class="text-input" placeholder="Provider name">
+          </div>
+          <div class="input-row" id="provider-url-row">
+            <label>Base URL:</label>
+            <input type="text" id="provider-url-input" class="text-input" placeholder="http://192.168.1.100:8080">
+          </div>
+          <div class="input-row">
+            <label>API Key:</label>
+            <input type="password" id="provider-key-input" class="text-input" placeholder="API key">
+          </div>
+          <div class="input-row">
+            <label>Model:</label>
+            <select id="provider-model-select" class="select-input" style="flex:1"></select>
+          </div>
+          <div class="input-row" id="provider-matter-row" hidden>
+            <label>Matter ID:</label>
+            <input type="text" id="provider-matter-input" class="text-input" placeholder="Optional matter_id">
+          </div>
+          <p id="provider-modal-status" class="status-text"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-tertiary" id="provider-test-btn">Test Connection</button>
+          <button class="btn btn-primary" id="provider-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Embeddings</span>
+        <span class="card-subtitle">Local search model</span>
+      </div>
+      <div class="card-body">
+        <div class="embeddings-status">
+          <span class="status-dot" id="embeddings-status-dot"></span>
+          <span id="embeddings-status-text">Not loaded</span>
+        </div>
+        <p id="embeddings-stats" class="hint-text"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Data Management</span>
+        <span class="card-subtitle">Storage and backups</span>
+      </div>
+      <div class="card-body">
+        <div id="storage-stats" class="settings-stats"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="backup-btn">Export Backup</button>
+          <button class="btn btn-secondary" id="restore-btn">Import Backup</button>
+        </div>
+        <button class="btn btn-danger btn-full" id="clear-all-btn">Clear All Data</button>
+        <input type="file" id="restore-input" accept=".json" hidden>
+      </div>
+    </div>
+
+    <!-- Clear all data confirmation modal -->
+    <div class="modal-overlay" id="clear-data-modal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Clear All Data</h3>
+          <button class="btn-icon modal-close" id="clear-data-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:var(--font-size-md);color:var(--color-text);margin-bottom:0.5rem">Are you sure you want to delete all data?</p>
+          <p class="hint-text" style="margin-bottom:0">This will permanently remove all conversations, summaries, topics, and embeddings. This action cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-tertiary" id="clear-data-cancel">Cancel</button>
+          <button class="btn btn-danger" id="clear-data-confirm">Delete Everything</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="../vendor/jszip.min.js"></script>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

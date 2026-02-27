@@ -1,0 +1,90 @@
+{
+  "manifest_version": 3,
+  "name": "Slop",
+  "version": "1.0.0",
+  "description": "Your AI conversations are scattered. Slop captures, summarizes, and injects your knowledge back — across ChatGPT, Claude, Gemini & Copilot.",
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Slop"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [{
+    "resources": ["icons/icon48.png"],
+    "matches": [
+      "https://chat.openai.com/*",
+      "https://chatgpt.com/*",
+      "https://claude.ai/*",
+      "https://gemini.google.com/*",
+      "https://copilot.microsoft.com/*"
+    ]
+  }],
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+      "js": [
+        "content-scripts/sites/chatgpt.js",
+        "content-scripts/capture.js",
+        "content-scripts/inject/inject.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": [
+        "content-scripts/sites/claude.js",
+        "content-scripts/capture.js",
+        "content-scripts/inject/inject.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": [
+        "content-scripts/sites/gemini.js",
+        "content-scripts/capture.js",
+        "content-scripts/inject/inject.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://copilot.microsoft.com/*"],
+      "js": [
+        "content-scripts/sites/copilot.js",
+        "content-scripts/capture.js",
+        "content-scripts/inject/inject.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
