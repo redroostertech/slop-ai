@@ -11,6 +11,167 @@ import { trackView, trackExport } from '../lib/tracker.js';
 import { getProviders, saveProviders, hasEnabledProvider, testProvider, PROVIDER_DEFAULTS } from '../lib/ai-router.js';
 import { initEmbeddings, isModelLoaded, isModelLoading, embed, destroyEmbeddings } from '../lib/embeddings.js';
 
+// ===== Generic Modal Helpers =====
+const _genericModal = document.getElementById('generic-modal');
+const _genericTitle = document.getElementById('generic-modal-title');
+const _genericMessage = document.getElementById('generic-modal-message');
+const _genericOk = document.getElementById('generic-modal-ok');
+const _genericCancel = document.getElementById('generic-modal-cancel');
+const _genericClose = document.getElementById('generic-modal-close');
+
+function showAlert(message, title = 'Notice') {
+  return new Promise(resolve => {
+    _genericTitle.textContent = title;
+    _genericMessage.textContent = message;
+    _genericCancel.hidden = true;
+    _genericOk.textContent = 'OK';
+    _genericOk.className = 'btn btn-primary';
+    _genericModal.hidden = false;
+    const done = () => { _genericModal.hidden = true; resolve(); };
+    _genericOk.onclick = done;
+    _genericClose.onclick = done;
+  });
+}
+
+function showConfirm(message, title = 'Confirm', { ok = 'OK', danger = false } = {}) {
+  return new Promise(resolve => {
+    _genericTitle.textContent = title;
+    _genericMessage.textContent = message;
+    _genericCancel.hidden = false;
+    _genericOk.textContent = ok;
+    _genericOk.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+    _genericModal.hidden = false;
+    _genericOk.onclick = () => { _genericModal.hidden = true; resolve(true); };
+    _genericCancel.onclick = () => { _genericModal.hidden = true; resolve(false); };
+    _genericClose.onclick = () => { _genericModal.hidden = true; resolve(false); };
+  });
+}
+
+// ===== Activity Drawer =====
+const ActivityDrawer = (() => {
+  const el = document.getElementById('activity-drawer');
+  const titleEl = document.getElementById('activity-title');
+  const subtitleEl = document.getElementById('activity-subtitle');
+  const progressEl = document.getElementById('activity-progress');
+  const cancelBtn = document.getElementById('activity-cancel-btn');
+  const dismissBtn = document.getElementById('activity-dismiss');
+  const barFill = document.getElementById('activity-bar-fill');
+  let autoDismissTimer = null;
+  let _onCancel = null;
+
+  function clearTimer() {
+    if (autoDismissTimer) { clearTimeout(autoDismissTimer); autoDismissTimer = null; }
+  }
+
+  function setState(state) {
+    el.classList.remove('activity-state-done', 'activity-state-error', 'activity-state-stopped');
+    if (state) el.classList.add(`activity-state-${state}`);
+  }
+
+  function show() {
+    clearTimer();
+    el.hidden = false;
+    document.body.classList.add('activity-drawer-open');
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('activity-visible')));
+  }
+
+  function dismiss() {
+    clearTimer();
+    el.classList.remove('activity-visible');
+    document.body.classList.remove('activity-drawer-open');
+    setTimeout(() => {
+      el.hidden = true;
+      setState(null);
+      cancelBtn.hidden = true;
+      _onCancel = null;
+      progressEl.textContent = '';
+      barFill.style.width = '0%';
+    }, 300);
+  }
+
+  function autoDismiss(ms) {
+    clearTimer();
+    autoDismissTimer = setTimeout(dismiss, ms);
+  }
+
+  dismissBtn?.addEventListener('click', dismiss);
+  cancelBtn?.addEventListener('click', () => { if (_onCancel) _onCancel(); });
+
+  return {
+    showSingle(title) {
+      setState(null);
+      titleEl.textContent = title;
+      subtitleEl.textContent = 'Summarizing...';
+      progressEl.textContent = '';
+      cancelBtn.hidden = true;
+      barFill.style.width = '0%';
+      show();
+    },
+
+    showBatch(done, total, onCancel) {
+      setState(null);
+      _onCancel = onCancel || null;
+      titleEl.textContent = `Summarizing ${done}/${total}`;
+      subtitleEl.textContent = 'Batch summarization in progress';
+      progressEl.textContent = `${done}/${total}`;
+      cancelBtn.hidden = !onCancel;
+      barFill.style.width = total > 0 ? `${(done / total) * 100}%` : '0%';
+      show();
+    },
+
+    updateBatch(done, total, failed) {
+      titleEl.textContent = `Summarizing ${done}/${total}`;
+      progressEl.textContent = `${done}/${total}`;
+      barFill.style.width = total > 0 ? `${(done / total) * 100}%` : '0%';
+      if (failed > 0) subtitleEl.textContent = `${failed} failed`;
+    },
+
+    completeSingle(title) {
+      setState('done');
+      titleEl.textContent = title;
+      subtitleEl.textContent = 'Summary complete';
+      progressEl.textContent = '';
+      cancelBtn.hidden = true;
+      barFill.style.width = '100%';
+      autoDismiss(4000);
+    },
+
+    completeBatch(done, total, failed) {
+      setState('done');
+      titleEl.textContent = `Done! ${done} summarized`;
+      subtitleEl.textContent = failed > 0 ? `${failed} failed` : 'All conversations processed';
+      progressEl.textContent = `${done}/${total}`;
+      cancelBtn.hidden = true;
+      barFill.style.width = '100%';
+      autoDismiss(5000);
+    },
+
+    stoppedBatch(done, total) {
+      setState('stopped');
+      titleEl.textContent = `Stopped: ${done}/${total} summarized`;
+      subtitleEl.textContent = 'Batch summarization cancelled';
+      progressEl.textContent = '';
+      cancelBtn.hidden = true;
+      barFill.style.width = total > 0 ? `${(done / total) * 100}%` : '0%';
+      autoDismiss(5000);
+    },
+
+    errorSingle(message) {
+      setState('error');
+      titleEl.textContent = 'Summarization failed';
+      subtitleEl.textContent = message;
+      progressEl.textContent = '';
+      cancelBtn.hidden = true;
+      barFill.style.width = '100%';
+      autoDismiss(6000);
+    },
+
+    dismiss,
+
+    get isActive() { return el.classList.contains('activity-visible'); }
+  };
+})();
+
 // ===== View Router =====
 const views = {
   dashboard: document.getElementById('view-dashboard'),
@@ -439,6 +600,7 @@ async function handleFiles(fileList) {
   let totalImported = 0;
   let totalSkipped = 0;
   const sources = new Set();
+  let claudeProjects = null;
 
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
@@ -448,6 +610,11 @@ async function handleFiles(fileList) {
     try {
       const result = await parseImport(file);
       sources.add(result.source);
+
+      // Collect Claude projects if present
+      if (result.projects && Array.isArray(result.projects)) {
+        claudeProjects = result.projects;
+      }
 
       // Deduplicate
       const existing = await dbGetByIndex('conversations', 'source', result.source);
@@ -468,12 +635,129 @@ async function handleFiles(fileList) {
     fill.style.width = `${((i + 1) / fileList.length) * 100}%`;
   }
 
+  // --- Create project topics for ChatGPT project conversations ---
+  let projectGroupCount = 0;
+  if (totalImported > 0) {
+    try {
+      // Fetch all conversations to find newly imported project convs
+      const allConvs = await dbGetAll('conversations');
+      const projectConvs = allConvs.filter(c =>
+        c.metadata?.gizmoType === 'snorlax' && c.metadata?.gizmoId
+      );
+
+      // Group by gizmoId
+      const groups = new Map();
+      for (const conv of projectConvs) {
+        const gid = conv.metadata.gizmoId;
+        if (!groups.has(gid)) groups.set(gid, []);
+        groups.get(gid).push(conv);
+      }
+
+      // Check existing topics to avoid duplicates
+      const existingTopics = await dbGetAll('topics');
+      const existingGizmoIds = new Set(
+        existingTopics.filter(t => t.metadata?.gizmoId).map(t => t.metadata.gizmoId)
+      );
+
+      for (const [gizmoId, convs] of groups) {
+        if (existingGizmoIds.has(gizmoId)) {
+          // Topic exists — ensure conversations are tagged with its ID
+          const existingTopic = existingTopics.find(t => t.metadata?.gizmoId === gizmoId);
+          if (existingTopic) {
+            for (const conv of convs) {
+              if (!conv.metadata.projectTopicId) {
+                conv.metadata.projectTopicId = existingTopic.id;
+                await dbPut('conversations', conv);
+              }
+            }
+          }
+          continue;
+        }
+
+        // Create new project topic — use short gizmo suffix for unique name
+        const suffix = gizmoId.slice(-8);
+        let topicName = `ChatGPT Project ${suffix}`;
+        // Check name isn't already taken (unique index on name)
+        const nameExists = existingTopics.some(t => t.name === topicName);
+        if (nameExists) topicName = `ChatGPT Project ${suffix}-${convs.length}`;
+
+        const topic = {
+          id: generateId(),
+          name: topicName,
+          description: `Imported ChatGPT project with ${convs.length} conversations. Rename this topic.`,
+          parentTopicId: null,
+          summaryIds: [],
+          tags: [],
+          metadata: { gizmoId, source: 'chatgpt-project' },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await dbPut('topics', topic);
+
+        // Tag each conversation with the project topic ID
+        for (const conv of convs) {
+          conv.metadata.projectTopicId = topic.id;
+          await dbPut('conversations', conv);
+        }
+
+        projectGroupCount++;
+      }
+    } catch (err) {
+      console.warn('[AI Context Bridge] Failed to create project topics:', err);
+    }
+  }
+
+  // --- Create topics from Claude projects.json ---
+  let claudeProjectCount = 0;
+  if (claudeProjects && claudeProjects.length > 0) {
+    try {
+      const existingTopics = await dbGetAll('topics');
+      const existingProjectUuids = new Set(
+        existingTopics.filter(t => t.metadata?.claudeProjectUuid).map(t => t.metadata.claudeProjectUuid)
+      );
+
+      for (const proj of claudeProjects) {
+        if (!proj.uuid || existingProjectUuids.has(proj.uuid)) continue;
+        // Skip the starter "How to use Claude" project
+        if (proj.is_starter_project) continue;
+
+        const topicName = proj.name || `Claude Project ${proj.uuid.slice(-8)}`;
+        // Check name uniqueness (topics have unique name index)
+        const nameExists = existingTopics.some(t => t.name === topicName);
+        const finalName = nameExists ? `${topicName} (${proj.uuid.slice(-8)})` : topicName;
+
+        const topic = {
+          id: generateId(),
+          name: finalName,
+          description: proj.description || `Imported Claude project. Assign conversations manually.`,
+          parentTopicId: null,
+          summaryIds: [],
+          tags: [],
+          metadata: {
+            claudeProjectUuid: proj.uuid,
+            source: 'claude-project',
+            promptTemplate: proj.prompt_template || null
+          },
+          createdAt: proj.created_at || new Date().toISOString(),
+          updatedAt: proj.updated_at || new Date().toISOString()
+        };
+        await dbPut('topics', topic);
+        existingTopics.push(topic); // track for name collision checks
+        claudeProjectCount++;
+      }
+    } catch (err) {
+      console.warn('[AI Context Bridge] Failed to create Claude project topics:', err);
+    }
+  }
+
   progressBox.hidden = true;
   resultsDiv.hidden = false;
 
   const sourceList = [...sources].map(s => sourceLabel(s)).join(', ');
   let msg = `Imported ${formatNumber(totalImported)} conversations from ${sourceList}.`;
   if (totalSkipped > 0) msg += ` Skipped ${formatNumber(totalSkipped)} duplicates.`;
+  if (projectGroupCount > 0) msg += ` Found ${projectGroupCount} project group${projectGroupCount > 1 ? 's' : ''} — rename them in Topics.`;
+  if (claudeProjectCount > 0) msg += ` Created ${claudeProjectCount} Claude project topic${claudeProjectCount > 1 ? 's' : ''}.`;
   resultsText.textContent = msg;
 }
 
@@ -708,23 +992,31 @@ document.getElementById('conv-summarize-btn')?.addEventListener('click', async (
     return;
   }
 
-  btn.textContent = 'Summarizing...';
+  // Guard: prevent single summarize while batch is running
+  if (isSummarizing) {
+    showAlert('A batch summarization is already in progress. Please wait or cancel it first.');
+    return;
+  }
+
+  const convTitle = currentConv.title || 'Untitled';
   btn.disabled = true;
+  ActivityDrawer.showSingle(convTitle);
   try {
     const hasProvider = await hasEnabledProvider();
-    if (!hasProvider) { navigateTo('settings'); return; }
+    if (!hasProvider) { ActivityDrawer.dismiss(); navigateTo('settings'); return; }
     const injCtx = await resolveInjectionContext(currentConv);
     const summary = await summarizeConversation(currentConv, { injectionContext: injCtx });
     await dbPut('summaries', summary);
-    const forceTopicId = injCtx?.[0]?.topicId || null;
+    const forceTopicId = currentConv?.metadata?.projectTopicId || injCtx?.[0]?.topicId || null;
     await assignToTopic(summary, { forceTopicId });
     // Embed the new summary
     await embedSummary(summary);
     // Check for conflicts with existing knowledge
     try { await checkNewSummary(summary, { useAI: true }); } catch {}
+    ActivityDrawer.completeSingle(convTitle);
     await initConversationDetail(currentConv.id);
   } catch (err) {
-    alert('Summarization failed: ' + err.message);
+    ActivityDrawer.errorSingle(err.message);
   } finally {
     btn.textContent = 'Summarize';
     btn.disabled = false;
@@ -911,7 +1203,7 @@ document.getElementById('export-confirm-proceed')?.addEventListener('click', asy
     try { await trackExport([], 'markdown'); } catch {}
     if (exportConfirmModal) exportConfirmModal.hidden = true;
   } catch (err) {
-    alert('Export failed: ' + err.message);
+    showAlert('Export failed: ' + err.message, 'Error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = origHTML;
@@ -969,14 +1261,31 @@ async function initTopicDetail(id) {
     codeSection.hidden = true;
   }
 
-  // Conversations
+  // Conversations — from summaries + project-tagged (unsummarized)
   const convContainer = document.getElementById('topic-conversations');
-  const convIds = detail.summaries.map(s => s.conversationId);
+  const summarizedConvIds = new Set(detail.summaries.map(s => s.conversationId));
   const convs = [];
-  for (const cid of convIds) {
+  for (const cid of summarizedConvIds) {
     const c = await dbGet('conversations', cid);
     if (c) convs.push(c);
   }
+  // Also include unsummarized conversations tagged to this project topic
+  const allConvsList = await dbGetAll('conversations');
+  for (const c of allConvsList) {
+    if (c.metadata?.projectTopicId === id && !summarizedConvIds.has(c.id)) {
+      convs.push(c);
+    }
+  }
+  convs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Update conversation count to include project-tagged convs
+  const totalConvCount = convs.length;
+  document.getElementById('topic-detail-meta').innerHTML = `
+    <span class="badge badge-count">${formatNumber(totalConvCount)} conversations</span>
+    ${detail.topic.tags.slice(0, 8).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+  `;
+  if (topicConvCount) topicConvCount.textContent = `${formatNumber(totalConvCount)}`;
+
   convContainer.innerHTML = convs.map(c => `
     <div class="item-card" data-conv-id="${c.id}">
       <div class="item-title">${escapeHtml(c.title)}</div>
@@ -988,7 +1297,115 @@ async function initTopicDetail(id) {
   convContainer.querySelectorAll('[data-conv-id]').forEach(card => {
     card.addEventListener('click', () => navigateTo('conversation-detail', { id: card.dataset.convId }));
   });
+
+  // Show "Summarize All" button if there are unsummarized conversations
+  const unsummarizedConvs = convs.filter(c => !summarizedConvIds.has(c.id));
+  const topicSumBtn = document.getElementById('topic-summarize-btn');
+  if (topicSumBtn) {
+    if (unsummarizedConvs.length > 0) {
+      topicSumBtn.hidden = false;
+      topicSumBtn.textContent = `Summarize ${formatNumber(unsummarizedConvs.length)} Conversations`;
+      topicSumBtn.disabled = false;
+      topicSumBtn._unsummarized = unsummarizedConvs;
+      topicSumBtn._topicId = id;
+    } else {
+      topicSumBtn.hidden = true;
+    }
+  }
 }
+
+// Topic detail: Summarize All button
+document.getElementById('topic-summarize-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('topic-summarize-btn');
+  const unsummarized = btn._unsummarized;
+  const topicId = btn._topicId;
+  if (!unsummarized || unsummarized.length === 0) return;
+
+  if (isSummarizing) {
+    showAlert('A batch summarization is already in progress. Please wait or cancel it first.');
+    return;
+  }
+
+  const hasProvider = await hasEnabledProvider();
+  if (!hasProvider) { navigateTo('settings'); return; }
+
+  const BATCH = 5;
+  let done = 0;
+  let failed = 0;
+  const total = unsummarized.length;
+  const suggestedNames = [];
+
+  isSummarizing = true;
+  btn.disabled = true;
+  btn.textContent = `Summarizing 0/${formatNumber(total)}...`;
+
+  ActivityDrawer.showBatch(0, total, () => {
+    cancelSummarization = true;
+    btn.textContent = 'Stopping...';
+  });
+
+  for (let i = 0; i < unsummarized.length; i += BATCH) {
+    if (cancelSummarization) break;
+
+    const batch = unsummarized.slice(i, i + BATCH);
+    const results = await Promise.allSettled(
+      batch.map(async (conv) => {
+        const injCtx = await resolveInjectionContext(conv);
+        const summary = await summarizeConversation(conv, { injectionContext: injCtx });
+        await dbPut('summaries', summary);
+        await assignToTopic(summary, { forceTopicId: topicId });
+        await embedSummary(summary);
+        if (summary.suggestedTopicName) suggestedNames.push(summary.suggestedTopicName);
+        return summary;
+      })
+    );
+    done += results.filter(r => r.status === 'fulfilled').length;
+    failed += results.filter(r => r.status === 'rejected').length;
+    btn.textContent = `Summarizing ${formatNumber(done)}/${formatNumber(total)}...`;
+    ActivityDrawer.updateBatch(done, total, failed);
+
+    if (i + BATCH < unsummarized.length && !cancelSummarization) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  isSummarizing = false;
+
+  // AI-rename the topic using the most common suggested name
+  if (suggestedNames.length > 0 && !cancelSummarization) {
+    try {
+      // Pick the most frequent suggestion
+      const freq = {};
+      for (const n of suggestedNames) {
+        const key = n.toLowerCase().trim();
+        freq[key] = (freq[key] || 0) + 1;
+      }
+      let bestName = suggestedNames[0];
+      let bestCount = 0;
+      for (const [key, count] of Object.entries(freq)) {
+        if (count > bestCount) {
+          bestCount = count;
+          bestName = suggestedNames.find(n => n.toLowerCase().trim() === key);
+        }
+      }
+      await renameTopic(topicId, bestName);
+    } catch (err) {
+      console.warn('[AI Context Bridge] Failed to auto-rename topic:', err);
+    }
+  }
+
+  if (cancelSummarization) {
+    btn.textContent = `Stopped: ${formatNumber(done)}/${formatNumber(total)}`;
+    ActivityDrawer.stoppedBatch(done, total);
+  } else {
+    btn.textContent = `Done! ${formatNumber(done)} summarized`;
+    ActivityDrawer.completeBatch(done, total, failed);
+  }
+
+  cancelSummarization = false;
+  // Refresh the topic detail view
+  setTimeout(() => initTopicDetail(topicId), 2000);
+});
 
 // Topic more options — bottom drawer
 const topicDrawer = document.getElementById('topic-drawer');
@@ -1124,7 +1541,7 @@ document.getElementById('export-download-btn')?.addEventListener('click', async 
     downloadFile(`ai-context-bridge-export.${ext}`, content);
     try { await trackExport(topicIds || [], target); } catch {}
   } catch (err) {
-    alert('Export failed: ' + err.message);
+    showAlert('Export failed: ' + err.message, 'Error');
   }
 });
 
@@ -1233,7 +1650,8 @@ async function renderProviderList() {
   container.querySelectorAll('[data-delete-id]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('Delete this provider?')) return;
+      const yes = await showConfirm('Delete this provider?', 'Delete Provider', { ok: 'Delete', danger: true });
+      if (!yes) return;
       const providers = await getProviders();
       const filtered = providers.filter(p => p.id !== btn.dataset.deleteId);
       await saveProviders(filtered);
@@ -1356,9 +1774,9 @@ document.getElementById('provider-save-btn')?.addEventListener('click', async ()
     : defaults.baseUrl;
   const matterId = document.getElementById('provider-matter-input').value.trim();
 
-  if (!name) { alert('Provider name is required.'); return; }
-  if (!apiKey) { alert('API key is required.'); return; }
-  if (type === 'lana' && !baseUrl) { alert('Base URL is required for Lana AI.'); return; }
+  if (!name) { showAlert('Provider name is required.', 'Missing Field'); return; }
+  if (!apiKey) { showAlert('API key is required.', 'Missing Field'); return; }
+  if (type === 'lana' && !baseUrl) { showAlert('Base URL is required for Lana AI.', 'Missing Field'); return; }
 
   // Request optional host permissions for Lana (non-standard URLs)
   if (type === 'lana' && baseUrl) {
@@ -1469,10 +1887,10 @@ document.getElementById('restore-input')?.addEventListener('change', async (e) =
     if (data.conversations) await dbPutBatch('conversations', data.conversations);
     if (data.summaries) await dbPutBatch('summaries', data.summaries);
     if (data.topics) await dbPutBatch('topics', data.topics);
-    alert(`Restored ${data.conversations?.length || 0} conversations, ${data.summaries?.length || 0} summaries, ${data.topics?.length || 0} topics.`);
+    showAlert(`Restored ${data.conversations?.length || 0} conversations, ${data.summaries?.length || 0} summaries, ${data.topics?.length || 0} topics.`, 'Backup Restored');
     await initSettings();
   } catch (err) {
-    alert('Restore failed: ' + err.message);
+    showAlert('Restore failed: ' + err.message, 'Error');
   }
 });
 
@@ -1585,11 +2003,17 @@ document.getElementById('dashboard-summarize-btn')?.addEventListener('click', as
   const BATCH = 5;
   let done = 0;
   let failed = 0;
+  const total = pending.length;
 
   isSummarizing = true;
   cancelSummarization = false;
   btn.textContent = 'Stop Summarizing';
   btn.classList.add('btn-stop');
+
+  ActivityDrawer.showBatch(0, total, () => {
+    cancelSummarization = true;
+    btn.textContent = 'Stopping...';
+  });
 
   for (let i = 0; i < pending.length; i += BATCH) {
     if (cancelSummarization) break;
@@ -1600,7 +2024,7 @@ document.getElementById('dashboard-summarize-btn')?.addEventListener('click', as
         const injCtx = await resolveInjectionContext(conv);
         const summary = await summarizeConversation(conv, { injectionContext: injCtx });
         await dbPut('summaries', summary);
-        const forceTopicId = injCtx?.[0]?.topicId || null;
+        const forceTopicId = conv?.metadata?.projectTopicId || injCtx?.[0]?.topicId || null;
         await assignToTopic(summary, { forceTopicId });
         // Embed the new summary
         await embedSummary(summary);
@@ -1609,7 +2033,8 @@ document.getElementById('dashboard-summarize-btn')?.addEventListener('click', as
     );
     done += results.filter(r => r.status === 'fulfilled').length;
     failed += results.filter(r => r.status === 'rejected').length;
-    btn.textContent = `Stop (${formatNumber(done)}/${formatNumber(pending.length)})`;
+    btn.textContent = `Stop (${formatNumber(done)}/${formatNumber(total)})`;
+    ActivityDrawer.updateBatch(done, total, failed);
 
     if (i + BATCH < pending.length && !cancelSummarization) {
       await new Promise(r => setTimeout(r, 1000));
@@ -1620,9 +2045,11 @@ document.getElementById('dashboard-summarize-btn')?.addEventListener('click', as
   btn.classList.remove('btn-stop');
 
   if (cancelSummarization) {
-    btn.textContent = `Stopped: ${formatNumber(done)}/${formatNumber(pending.length)} summarized`;
+    btn.textContent = `Stopped: ${formatNumber(done)}/${formatNumber(total)} summarized`;
+    ActivityDrawer.stoppedBatch(done, total);
   } else {
     btn.textContent = `Done! ${formatNumber(done)} summarized${failed ? `, ${failed} failed` : ''}`;
+    ActivityDrawer.completeBatch(done, total, failed);
   }
 
   cancelSummarization = false;
@@ -1814,7 +2241,7 @@ document.getElementById('conflict-scan-btn')?.addEventListener('click', async ()
   } catch (err) {
     btn.textContent = 'Failed';
     btn.disabled = false;
-    alert('Scan error: ' + err.message);
+    showAlert('Scan error: ' + err.message, 'Error');
   }
 });
 

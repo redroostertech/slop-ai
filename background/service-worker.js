@@ -115,6 +115,25 @@ async function handleMessage(message, sender) {
       }
       return { ok: true };
 
+    case 'GET_KNOWLEDGE_DATA': {
+      const [summaries, topics, conversations] = await Promise.all([
+        dbGetAll('summaries'),
+        dbGetAll('topics'),
+        dbGetAll('conversations')
+      ]);
+      // Trim conversations to only fields needed for scoring + rendering
+      const lightConversations = (conversations || []).map(c => ({
+        id: c.id,
+        title: c.title,
+        source: c.source,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        messageCount: c.messageCount,
+        messages: (c.messages || []).slice(-6)
+      }));
+      return { summaries: summaries || [], topics: topics || [], conversations: lightConversations };
+    }
+
     case 'DATA_CHANGED': {
       // Broadcast to all tabs so content scripts can refresh
       const allTabs = await chrome.tabs.query({});

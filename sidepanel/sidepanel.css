@@ -1662,6 +1662,138 @@ section[hidden] { display: none; }
   flex-shrink: 0;
 }
 
+/* ===== Activity Drawer ===== */
+.activity-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--color-surface);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--color-border);
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.activity-drawer.activity-visible {
+  transform: translateY(0);
+}
+
+.activity-drawer[hidden] { display: block; }
+
+.activity-drawer-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.activity-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  position: relative;
+}
+
+.activity-icon svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+}
+
+.activity-drawer .activity-spinner { display: block; color: var(--color-brand-primary); animation: activitySpin 1s linear infinite; }
+.activity-drawer .activity-check { display: none; }
+.activity-drawer .activity-error-icon { display: none; }
+
+.activity-drawer.activity-state-done .activity-spinner { display: none; }
+.activity-drawer.activity-state-done .activity-check { display: block; color: #16a34a; }
+.activity-drawer.activity-state-done .activity-error-icon { display: none; }
+
+.activity-drawer.activity-state-error .activity-spinner { display: none; }
+.activity-drawer.activity-state-error .activity-check { display: none; }
+.activity-drawer.activity-state-error .activity-error-icon { display: block; color: var(--color-danger); }
+
+.activity-drawer.activity-state-stopped .activity-spinner { display: none; }
+.activity-drawer.activity-state-stopped .activity-check { display: block; color: var(--color-orange); }
+
+@keyframes activitySpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.activity-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.activity-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.activity-progress {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.activity-dismiss {
+  font-size: 1.1rem;
+  padding: 0.15rem;
+  color: var(--color-text-secondary);
+}
+
+.activity-dismiss:hover {
+  color: var(--color-text);
+}
+
+.activity-bar {
+  height: 3px;
+  background: var(--color-border);
+}
+
+.activity-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--color-brand-primary);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 0 2px 2px 0;
+}
+
+.activity-drawer.activity-state-done .activity-bar-fill { background: #16a34a; }
+.activity-drawer.activity-state-error .activity-bar-fill { background: var(--color-danger); }
+.activity-drawer.activity-state-stopped .activity-bar-fill { background: var(--color-orange); }
+
+body.activity-drawer-open { padding-bottom: 3.5rem; }
+
+body.activity-drawer-open .view-pinned {
+  height: calc(100vh - 1.5rem - 3.5rem);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

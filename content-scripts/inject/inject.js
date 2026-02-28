@@ -28,12 +28,20 @@
   const MAX_VISIBLE_TAGS = 5;
   const MAX_CONTEXT_KEYWORDS = 8;
 
-  // Chat message selectors per site (for context extraction)
+  // Chat message selectors per site (for context extraction — user messages first)
   const MESSAGE_SELECTORS = {
-    chatgpt: '[data-message-author-role="user"] .whitespace-pre-wrap, [data-message-author-role="user"] .markdown',
+    chatgpt: '[data-message-author-role="user"] .whitespace-pre-wrap, [data-message-author-role="user"] .break-words, [data-message-author-role="user"] .markdown, [data-message-author-role="user"]',
     claude: '[data-testid="user-message"], div.font-user-message',
     gemini: '.query-text, .user-query-text, [data-message-author="user"]',
     copilot: '.user-message, [data-content="user-message"]'
+  };
+
+  // Fallback: any message (user + assistant) for context when user-only selectors fail
+  const ALL_MESSAGE_SELECTORS = {
+    chatgpt: '[data-message-author-role] .markdown, [data-message-author-role] .whitespace-pre-wrap, [data-message-author-role] .break-words, [data-message-author-role]',
+    claude: '[data-testid="user-message"], div.font-user-message, .font-claude-message, [data-testid="assistant-message"]',
+    gemini: '.query-text, .user-query-text, .model-response-text, [data-message-author]',
+    copilot: '.user-message, .bot-message, [data-content="user-message"], [data-content="bot-message"]'
   };
 
   // Chat container selectors for MutationObserver
@@ -65,6 +73,11 @@
   let searchDebounceTimer = null;
   let shadowRoot = null;
   let observer = null;
+
+  // Knowledge cache for local-first scoring
+  let _knowledgeCache = null; // { summaries, topics, conversations, topicMap, summarizedIds }
+  let _cacheLoadedAt = 0;
+  let _cacheLoading = false;
 
   // DOM references (inside shadow)
   let triggerBtn = null;
@@ -127,6 +140,420 @@
   }
 
   // =========================================================================
+  // Knowledge Cache Loading
+  // =========================================================================
+  async function loadKnowledgeCache() {
+    if (_cacheLoading) return;
+    _cacheLoading = true;
+
+    try {
+      const data = await sendMessage({ type: 'GET_KNOWLEDGE_DATA' });
+      if (!data || data.error) {
+        console.warn('[AI Context Bridge] Failed to load knowledge data:', data?.error);
+        _cacheLoading = false;
+        return;
+      }
+
+      const topicMap = new Map();
+      for (const topic of (data.topics || [])) {
+        topicMap.set(topic.id, topic);
+      }
+
+      const summarizedIds = new Set(
+        (data.summaries || []).map(s => s.conversationId).filter(Boolean)
+      );
+
+      _knowledgeCache = {
+        summaries: data.summaries || [],
+        topics: data.topics || [],
+        conversations: data.conversations || [],
+        topicMap,
+        summarizedIds
+      };
+      _cacheLoadedAt = Date.now();
+    } catch (err) {
+      // Extension may be invalidated — keep stale cache if available
+      console.info('[AI Context Bridge] Could not load knowledge cache:', err.message || err);
+    }
+
+    _cacheLoading = false;
+  }
+
+  // =========================================================================
+  // Local Scoring Algorithm (ported from lib/relevance.js)
+  // =========================================================================
+  const STOPWORDS = new Set([
+    'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'is', 'it', 'as', 'be', 'was', 'were',
+    'been', 'are', 'am', 'do', 'does', 'did', 'has', 'had', 'have', 'will',
+    'would', 'could', 'should', 'may', 'might', 'can', 'shall', 'not', 'no',
+    'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'we', 'they',
+    'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'its', 'our',
+    'their', 'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why',
+    'if', 'then', 'else', 'so', 'up', 'out', 'about', 'into', 'over',
+    'after', 'before', 'between', 'under', 'again', 'just', 'also', 'than',
+    'very', 'too', 'some', 'any', 'all', 'each', 'every', 'both', 'few',
+    'more', 'most', 'other', 'such', 'only', 'same', 'here', 'there',
+    'now', 'then', 'once', 'still', 'already', 'much', 'many', 'well',
+    'back', 'even', 'new', 'way', 'use', 'like', 'get', 'make', 'go',
+    'know', 'take', 'see', 'come', 'think', 'look', 'want', 'give', 'need',
+    'tell', 'say', 'try', 'ask', 'work', 'seem', 'feel', 'let', 'keep',
+    'help', 'show', 'put', 'set', 'run', 'move', 'play', 'turn', 'being',
+    'thing', 'things', 'really', 'using', 'used', 'one', 'two', 'first',
+    'last', 'long', 'great', 'little', 'own', 'old', 'right', 'while',
+    'able', 'done', 'going', 'something', 'anything', 'everything', 'nothing'
+  ]);
+
+  const WEIGHTS = {
+    TAG_MATCH: 3.0,
+    TITLE_MATCH: 2.0,
+    INSIGHT_MATCH: 1.5,
+    DECISION_MATCH: 1.2,
+    SUMMARY_MATCH: 0.5,
+    RECENCY_MAX_BOOST: 0.3,
+    USAGE_BOOST_PER_USE: 0.1,
+    USAGE_BOOST_CAP: 0.5
+  };
+
+  const RECENCY_DECAY_DAYS = 90;
+
+  function tokenize(text) {
+    if (!text || typeof text !== 'string') return [];
+    const expanded = text.replace(/([a-z])([A-Z])/g, '$1 $2');
+    const words = expanded
+      .toLowerCase()
+      .replace(/[^a-z0-9\-]/g, ' ')
+      .split(/[\s\-]+/)
+      .filter(w => w.length >= 2 && !STOPWORDS.has(w));
+    return [...new Set(words)];
+  }
+
+  function termFrequency(tokens) {
+    const tf = new Map();
+    for (const token of tokens) {
+      tf.set(token, (tf.get(token) || 0) + 1);
+    }
+    return tf;
+  }
+
+  function overlapScore(contextTF, contextTokens, candidateStrings) {
+    if (!candidateStrings || candidateStrings.length === 0) {
+      return { score: 0, matched: [] };
+    }
+    const candidateTokens = new Set();
+    const candidateOriginals = new Map();
+    for (const str of candidateStrings) {
+      const tokens = tokenize(str);
+      for (const t of tokens) {
+        candidateTokens.add(t);
+        if (!candidateOriginals.has(t)) candidateOriginals.set(t, str);
+      }
+    }
+    let score = 0;
+    const matched = new Set();
+    for (const token of contextTokens) {
+      if (candidateTokens.has(token)) {
+        const freq = contextTF.get(token) || 1;
+        score += Math.log2(1 + freq);
+        const orig = candidateOriginals.get(token);
+        if (orig) matched.add(orig);
+      }
+    }
+    if (candidateTokens.size > 0) {
+      score = score / Math.sqrt(candidateTokens.size);
+    }
+    return { score, matched: [...matched] };
+  }
+
+  function recencyBoost(createdAt) {
+    if (!createdAt) return 0;
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    if (ageDays < 0) return WEIGHTS.RECENCY_MAX_BOOST;
+    if (ageDays > RECENCY_DECAY_DAYS) return 0;
+    return WEIGHTS.RECENCY_MAX_BOOST * (1 - ageDays / RECENCY_DECAY_DAYS);
+  }
+
+  function usageBoost(usageCount) {
+    if (!usageCount || usageCount <= 0) return 0;
+    return Math.min(usageCount * WEIGHTS.USAGE_BOOST_PER_USE, WEIGHTS.USAGE_BOOST_CAP);
+  }
+
+  function buildReason(matchDetails) {
+    const parts = [];
+    if (matchDetails.tagMatches.length > 0) {
+      parts.push('Matched tags: ' + matchDetails.tagMatches.slice(0, 5).join(', '));
+    }
+    if (matchDetails.titleMatches.length > 0) {
+      parts.push('Title keywords: ' + matchDetails.titleMatches.slice(0, 3).join(', '));
+    }
+    if (matchDetails.insightMatches.length > 0) {
+      parts.push('Insight match: ' + matchDetails.insightMatches.slice(0, 2).join(', '));
+    }
+    if (matchDetails.decisionMatches.length > 0) {
+      parts.push('Decision match: ' + matchDetails.decisionMatches.slice(0, 2).join(', '));
+    }
+    if (matchDetails.hasRecencyBoost) parts.push('Recent');
+    if (matchDetails.hasUsageBoost) parts.push('Frequently used');
+    return parts.length > 0 ? parts.join(' | ') : 'General relevance';
+  }
+
+  function scoreLocally(contextText, options) {
+    const { maxResults = 5, minScore = 0.1 } = options || {};
+    if (!_knowledgeCache) return [];
+    if (!contextText || typeof contextText !== 'string' || contextText.trim().length === 0) return [];
+
+    const contextTokens = tokenize(contextText);
+    if (contextTokens.length === 0) return [];
+    const contextTF = termFrequency(contextTokens);
+
+    const { summaries, conversations, topicMap, summarizedIds } = _knowledgeCache;
+    if ((!summaries || summaries.length === 0) && (!conversations || conversations.length === 0)) return [];
+
+    const scored = [];
+
+    // Score summaries
+    for (const summary of summaries) {
+      const matchDetails = {
+        tagMatches: [], titleMatches: [], insightMatches: [],
+        decisionMatches: [], hasRecencyBoost: false, hasUsageBoost: false
+      };
+
+      const tagResult = overlapScore(contextTF, contextTokens, summary.tags || []);
+      const tagScore = tagResult.score * WEIGHTS.TAG_MATCH;
+      matchDetails.tagMatches = tagResult.matched;
+
+      const titleResult = overlapScore(contextTF, contextTokens, [summary.title || '']);
+      const titleScore = titleResult.score * WEIGHTS.TITLE_MATCH;
+      matchDetails.titleMatches = titleResult.matched;
+
+      const insightResult = overlapScore(contextTF, contextTokens, summary.keyInsights || []);
+      const insightScore = insightResult.score * WEIGHTS.INSIGHT_MATCH;
+      matchDetails.insightMatches = insightResult.matched;
+
+      const decisionResult = overlapScore(contextTF, contextTokens, summary.decisions || []);
+      const decisionScore = decisionResult.score * WEIGHTS.DECISION_MATCH;
+      matchDetails.decisionMatches = decisionResult.matched;
+
+      const summaryTokens = tokenize(summary.summary || '');
+      let summaryBodyScore = 0;
+      if (summaryTokens.length > 0) {
+        const summarySet = new Set(summaryTokens);
+        let bodyMatches = 0;
+        for (const token of contextTokens) {
+          if (summarySet.has(token)) bodyMatches++;
+        }
+        summaryBodyScore = (bodyMatches / Math.sqrt(summaryTokens.length)) * WEIGHTS.SUMMARY_MATCH;
+      }
+
+      const recency = recencyBoost(summary.createdAt);
+      matchDetails.hasRecencyBoost = recency > 0.05;
+      const usage = usageBoost(summary.usageCount);
+      matchDetails.hasUsageBoost = usage > 0;
+
+      const totalScore = tagScore + titleScore + insightScore + decisionScore + summaryBodyScore + recency + usage;
+
+      if (totalScore >= minScore) {
+        const topic = summary.topicId ? (topicMap.get(summary.topicId) || null) : null;
+        scored.push({
+          summary,
+          topic,
+          score: Math.round(totalScore * 1000) / 1000,
+          reason: buildReason(matchDetails)
+        });
+      }
+    }
+
+    // Score unsummarized conversations
+    if (conversations && conversations.length > 0) {
+      for (const conv of conversations) {
+        if (summarizedIds.has(conv.id)) continue;
+
+        const titleResult = overlapScore(contextTF, contextTokens, [conv.title || '']);
+        const titleScore = titleResult.score * WEIGHTS.TITLE_MATCH;
+        const recency = recencyBoost(conv.updatedAt || conv.createdAt);
+        const totalScore = titleScore + recency;
+
+        if (totalScore >= minScore) {
+          const reasonParts = [];
+          if (titleResult.matched.length > 0) reasonParts.push('Title keywords: ' + titleResult.matched.slice(0, 3).join(', '));
+          if (recency > 0.05) reasonParts.push('Recent');
+
+          scored.push({
+            summary: {
+              id: conv.id,
+              title: conv.title,
+              createdAt: conv.createdAt,
+              source: conv.source,
+              messageCount: conv.messageCount,
+              messages: conv.messages,
+            },
+            topic: null,
+            score: Math.round(totalScore * 1000) / 1000,
+            reason: reasonParts.length > 0 ? reasonParts.join(' | ') : 'General relevance',
+            type: 'conversation',
+          });
+        }
+      }
+    }
+
+    scored.sort((a, b) => {
+      if (Math.abs(a.score - b.score) < 0.001) {
+        const aTime = new Date(a.summary.createdAt || 0).getTime();
+        const bTime = new Date(b.summary.createdAt || 0).getTime();
+        return bTime - aTime;
+      }
+      return b.score - a.score;
+    });
+
+    return scored.slice(0, maxResults);
+  }
+
+  /**
+   * Return the most recent knowledge items from cache (no scoring needed).
+   * Used as fallback when no chat context is detected.
+   */
+  function getRecentKnowledge(maxResults) {
+    if (!_knowledgeCache) return [];
+    const { summaries, conversations, topicMap, summarizedIds } = _knowledgeCache;
+    const items = [];
+
+    for (const summary of summaries) {
+      const topic = summary.topicId ? (topicMap.get(summary.topicId) || null) : null;
+      items.push({
+        summary,
+        topic,
+        score: 0,
+        reason: 'Recent knowledge',
+        _sortTime: new Date(summary.createdAt || 0).getTime()
+      });
+    }
+
+    for (const conv of conversations) {
+      if (summarizedIds.has(conv.id)) continue;
+      items.push({
+        summary: {
+          id: conv.id,
+          title: conv.title,
+          createdAt: conv.createdAt,
+          source: conv.source,
+          messageCount: conv.messageCount,
+          messages: conv.messages,
+        },
+        topic: null,
+        score: 0,
+        reason: 'Recent conversation',
+        type: 'conversation',
+        _sortTime: new Date(conv.updatedAt || conv.createdAt || 0).getTime()
+      });
+    }
+
+    items.sort((a, b) => b._sortTime - a._sortTime);
+    return items.slice(0, maxResults);
+  }
+
+  // =========================================================================
+  // Local Formatting (ported from lib/injector.js)
+  // =========================================================================
+  function formatClaudeSection(summary, topic) {
+    let section = '';
+    const topicName = topic?.name || 'General';
+    section += 'Topic: ' + topicName + '\n';
+    section += 'Title: ' + summary.title + '\n\n';
+    section += (summary.summary || '') + '\n\n';
+    if (summary.keyInsights && summary.keyInsights.length > 0) {
+      section += 'Key Insights:\n';
+      for (const insight of summary.keyInsights) section += '- ' + insight + '\n';
+      section += '\n';
+    }
+    if (summary.decisions && summary.decisions.length > 0) {
+      section += 'Decisions Made:\n';
+      for (const decision of summary.decisions) section += '- ' + decision + '\n';
+      section += '\n';
+    }
+    if (summary.codeSnippets && summary.codeSnippets.length > 0) {
+      section += 'Code Reference:\n';
+      for (const snippet of summary.codeSnippets) {
+        if (snippet.description) section += snippet.description + ':\n';
+        section += '```' + (snippet.language || '') + '\n' + snippet.code + '\n```\n\n';
+      }
+    }
+    return section;
+  }
+
+  function formatMarkdownSection(summary, topic) {
+    let output = '';
+    const topicName = topic?.name || 'General';
+    output += '### ' + topicName + ': ' + summary.title + '\n\n';
+    output += (summary.summary || '') + '\n\n';
+    if (summary.keyInsights && summary.keyInsights.length > 0) {
+      output += '**Key Insights:**\n';
+      for (const insight of summary.keyInsights) output += '- ' + insight + '\n';
+      output += '\n';
+    }
+    if (summary.decisions && summary.decisions.length > 0) {
+      output += '**Decisions:**\n';
+      for (const decision of summary.decisions) output += '- ' + decision + '\n';
+      output += '\n';
+    }
+    if (summary.codeSnippets && summary.codeSnippets.length > 0) {
+      output += '**Code Reference:**\n';
+      for (const snippet of summary.codeSnippets) {
+        if (snippet.description) output += '*' + snippet.description + '*\n';
+        output += '```' + (snippet.language || '') + '\n' + snippet.code + '\n```\n\n';
+      }
+    }
+    return output;
+  }
+
+  function formatForInjectionLocal(summary, topic, targetSystem) {
+    if (!summary) return '';
+    if (targetSystem === 'claude') {
+      return '<context>\n' + formatClaudeSection(summary, topic) + '</context>\n\n';
+    }
+    return formatMarkdownSection(summary, topic);
+  }
+
+  function formatBatchForInjectionLocal(items, targetSystem) {
+    if (!items || items.length === 0) return '';
+    if (targetSystem === 'claude') {
+      let output = '<context>\nThe following knowledge was gathered from previous AI conversations and is provided as relevant context.\n\n';
+      for (const { summary, topic } of items) {
+        output += formatClaudeSection(summary, topic) + '\n---\n\n';
+      }
+      output += '</context>\n\n';
+      return output;
+    }
+    let output = '## Relevant Context from Knowledge Base\n\n_The following was gathered from previous AI conversations._\n\n';
+    for (const { summary, topic } of items) {
+      output += formatMarkdownSection(summary, topic) + '\n---\n\n';
+    }
+    return output;
+  }
+
+  function formatConversationForInjectionLocal(conversation, targetSystem) {
+    if (!conversation) return '';
+    const messages = (conversation.messages || []).slice(-6);
+    const title = conversation.title || 'Untitled Conversation';
+    const source = conversation.source || 'unknown';
+    if (targetSystem === 'claude') {
+      let output = '<context>\nPrevious conversation from ' + source + ': ' + title + '\n\n';
+      for (const msg of messages) {
+        const role = msg.role === 'assistant' ? 'Assistant' : 'Human';
+        output += role + ': ' + msg.content + '\n\n';
+      }
+      output += '</context>\n\n';
+      return output;
+    }
+    let output = '### Previous Conversation: ' + title + '\n_Source: ' + source + '_\n\n';
+    for (const msg of messages) {
+      const role = msg.role === 'assistant' ? '**Assistant**' : '**User**';
+      output += role + ': ' + msg.content + '\n\n';
+    }
+    return output;
+  }
+
+  // =========================================================================
   // Shadow DOM Setup
   // =========================================================================
   function init() {
@@ -154,17 +581,22 @@
     // Listen for data changes (e.g. user cleared data in sidepanel)
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg.type === 'DATA_CHANGED') {
-        results = [];
-        lastContextText = '';
-        isSearchMode = false;
-        if (isOpen) {
-          extractAndScore(true);
-        }
+        // Refresh knowledge cache on data changes
+        loadKnowledgeCache().then(() => {
+          results = [];
+          lastContextText = '';
+          isSearchMode = false;
+          if (isOpen) {
+            extractAndScore(true);
+          }
+        });
       }
     });
 
-    // Initial context scan after a short delay (let the page load)
-    setTimeout(() => extractAndScore(), 2000);
+    // Preload knowledge cache, then do initial context scan
+    setTimeout(() => {
+      loadKnowledgeCache().then(() => extractAndScore());
+    }, 2000);
   }
 
   function getStyles() {
@@ -290,8 +722,13 @@
     searchInput.value = '';
     isSearchMode = false;
 
-    // Force fresh scoring on open to recover from stale/failed state
-    extractAndScore(true);
+    // Refresh cache if stale (>5 min old) then score
+    const CACHE_TTL = 5 * 60 * 1000;
+    if (!_knowledgeCache || (Date.now() - _cacheLoadedAt > CACHE_TTL)) {
+      loadKnowledgeCache().then(() => extractAndScore(true));
+    } else {
+      extractAndScore(true);
+    }
   }
 
   function closePanel() {
@@ -306,14 +743,25 @@
   // Context Extraction
   // =========================================================================
   function extractContextText() {
-    const selector = MESSAGE_SELECTORS[SITE];
+    // Try user-only selectors first
+    let text = extractFromSelector(MESSAGE_SELECTORS[SITE]);
+
+    // Fall back to all messages (user + assistant) if user-only returned nothing
+    if (!text && ALL_MESSAGE_SELECTORS[SITE]) {
+      text = extractFromSelector(ALL_MESSAGE_SELECTORS[SITE]);
+    }
+
+    return text;
+  }
+
+  function extractFromSelector(selector) {
     if (!selector) return '';
 
     try {
       const messageEls = document.querySelectorAll(selector);
       if (!messageEls || messageEls.length === 0) return '';
 
-      // Get the last N user messages
+      // Get the last N messages
       const messages = [];
       const els = Array.from(messageEls).slice(-MAX_CONTEXT_MESSAGES);
       for (const el of els) {
@@ -385,10 +833,16 @@
     updateContextBar(contextText);
 
     if (!contextText || contextText.trim().length < 10) {
-      // Not enough context yet
-      results = [];
-      updateBadge(0);
-      if (isOpen) renderResults();
+      // No chat context — show recent knowledge from cache as fallback
+      if (_knowledgeCache && (_knowledgeCache.summaries.length > 0 || _knowledgeCache.conversations.length > 0)) {
+        results = getRecentKnowledge(8);
+        updateBadge(results.length);
+        if (isOpen) renderResults();
+      } else {
+        results = [];
+        updateBadge(0);
+        if (isOpen) renderResults();
+      }
       return;
     }
 
@@ -398,57 +852,25 @@
     // Track this request so stale responses from earlier calls are ignored
     const requestId = ++extractRequestId;
 
-    console.log('[AI Context Bridge] Sending FIND_RELEVANT, context length:', contextText.length, 'requestId:', requestId);
-
-    try {
-      const response = await sendMessage({
-        type: 'FIND_RELEVANT',
-        contextText: contextText,
-        options: { maxResults: 8, minScore: 0.1 }
-      });
-
-      console.log('[AI Context Bridge] Got response:', response ? `${response.results?.length || 0} results` : 'null/undefined');
-
-      // Ignore stale response if a newer request was fired
+    if (_knowledgeCache) {
+      // Score locally from cached data
+      results = scoreLocally(contextText, { maxResults: 8, minScore: 0.1 });
       if (requestId !== extractRequestId) return;
-
-      if (response && response.results) {
-        results = response.results;
-      } else {
+    } else {
+      // Cache not loaded yet — try background as fallback
+      try {
+        const response = await sendMessage({
+          type: 'FIND_RELEVANT',
+          contextText: contextText,
+          options: { maxResults: 8, minScore: 0.1 }
+        });
+        if (requestId !== extractRequestId) return;
+        results = response?.results || [];
+      } catch (err) {
+        if (requestId !== extractRequestId) return;
         results = [];
-      }
-    } catch (err) {
-      // Ignore stale errors
-      if (requestId !== extractRequestId) return;
-
-      if (err.message && err.message.includes('Extension context invalidated')) {
-        console.info('[AI Context Bridge] Extension was reloaded — relevance scoring unavailable until page refresh.');
-        lastError = 'Extension was reloaded. Please refresh the page.';
-      } else if (err.message && err.message.includes('timed out')) {
-        console.warn('[AI Context Bridge] Service worker timed out — retrying once...');
-        // Retry once on timeout (service worker may have been waking up)
-        try {
-          const retry = await sendMessage({
-            type: 'FIND_RELEVANT',
-            contextText: contextText,
-            options: { maxResults: 8, minScore: 0.1 }
-          });
-          if (requestId !== extractRequestId) return;
-          if (retry && retry.results) {
-            results = retry.results;
-          } else {
-            results = [];
-          }
-        } catch (retryErr) {
-          if (requestId !== extractRequestId) return;
-          console.warn('[AI Context Bridge] Retry also failed:', retryErr.message || retryErr);
-          lastError = 'Could not reach service worker. Try closing and reopening the panel.';
-          results = [];
-        }
-      } else {
-        console.warn('[AI Context Bridge] Relevance scoring failed:', err.message || err);
-        lastError = 'Relevance scoring failed. Click retry to try again.';
-        results = [];
+        lastError = 'Knowledge data not loaded yet. Retrying...';
+        loadKnowledgeCache(); // trigger async load
       }
     }
 
@@ -468,24 +890,21 @@
     isLoading = true;
     renderLoading();
 
-    try {
-      const response = await sendMessage({
-        type: 'SEARCH_KNOWLEDGE',
-        query: query.trim(),
-        options: { maxResults: 10 }
-      });
-
-      if (response && response.results) {
-        results = response.results;
-      } else {
+    if (_knowledgeCache) {
+      results = scoreLocally(query.trim(), { maxResults: 10, minScore: 0.05 });
+    } else {
+      try {
+        const response = await sendMessage({
+          type: 'SEARCH_KNOWLEDGE',
+          query: query.trim(),
+          options: { maxResults: 10 }
+        });
+        results = response?.results || [];
+      } catch (err) {
+        console.warn('[AI Context Bridge] Search failed:', err);
+        lastError = 'Search failed. Try again.';
         results = [];
       }
-    } catch (err) {
-      console.warn('[AI Context Bridge] Search failed:', err);
-      lastError = err.message && err.message.includes('timed out')
-        ? 'Search timed out. Try again.'
-        : 'Search failed. Try again.';
-      results = [];
     }
 
     isLoading = false;
@@ -802,20 +1221,34 @@
     const { summary, topic, type } = item;
 
     try {
-      // Request formatted text from background
+      let text;
       const isConversation = type === 'conversation';
-      const response = await sendMessage(isConversation ? {
-        type: 'FORMAT_CONVERSATION_INJECTION',
-        conversationId: summary.id,
-        targetSystem: SITE
-      } : {
-        type: 'FORMAT_INJECTION',
-        summaryId: summary.id,
-        topicId: topic ? topic.id : null,
-        targetSystem: SITE
-      });
 
-      if (!response || !response.text) {
+      // Format locally from cached data
+      if (isConversation) {
+        text = formatConversationForInjectionLocal(summary, SITE);
+      } else {
+        text = formatForInjectionLocal(summary, topic, SITE);
+      }
+
+      // Fallback to background if local formatting returned empty
+      if (!text) {
+        try {
+          const response = await sendMessage(isConversation ? {
+            type: 'FORMAT_CONVERSATION_INJECTION',
+            conversationId: summary.id,
+            targetSystem: SITE
+          } : {
+            type: 'FORMAT_INJECTION',
+            summaryId: summary.id,
+            topicId: topic ? topic.id : null,
+            targetSystem: SITE
+          });
+          text = response?.text;
+        } catch { /* background unavailable */ }
+      }
+
+      if (!text) {
         showToast('Failed to format knowledge', true);
         return;
       }
@@ -824,7 +1257,7 @@
       const input = findChatInput();
       if (!input) {
         // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(response.text);
+        await navigator.clipboard.writeText(text);
         showToast('Copied to clipboard (chat input not found)');
         updateInjectButton(index, true);
         notifyUsage(summary.id);
@@ -832,11 +1265,11 @@
         return;
       }
 
-      insertIntoChatInput(input, response.text);
+      insertIntoChatInput(input, text);
       showToast('Knowledge injected into chat');
       updateInjectButton(index, true);
 
-      // Notify usage for tracking
+      // Notify usage for tracking (fire-and-forget)
       notifyUsage(summary.id);
       recordInjectionContext(summary.id, topic ? topic.id : null);
     } catch (err) {
@@ -859,28 +1292,18 @@
       const summaryItems = results.filter(r => r.type !== 'conversation');
       const convItems = results.filter(r => r.type === 'conversation');
 
-      // Format summaries as batch, conversations individually
+      // Format locally
       const textParts = [];
 
       if (summaryItems.length > 0) {
-        const batchResponse = await sendMessage({
-          type: 'FORMAT_BATCH_INJECTION',
-          items: summaryItems.map(r => ({
-            summaryId: r.summary.id,
-            topicId: r.topic ? r.topic.id : null
-          })),
-          targetSystem: SITE
-        });
-        if (batchResponse && batchResponse.text) textParts.push(batchResponse.text);
+        const batchItems = summaryItems.map(r => ({ summary: r.summary, topic: r.topic }));
+        const batchText = formatBatchForInjectionLocal(batchItems, SITE);
+        if (batchText) textParts.push(batchText);
       }
 
       for (const r of convItems) {
-        const convResponse = await sendMessage({
-          type: 'FORMAT_CONVERSATION_INJECTION',
-          conversationId: r.summary.id,
-          targetSystem: SITE
-        });
-        if (convResponse && convResponse.text) textParts.push(convResponse.text);
+        const convText = formatConversationForInjectionLocal(r.summary, SITE);
+        if (convText) textParts.push(convText);
       }
 
       const response = { text: textParts.join('\n') };
