@@ -72,14 +72,61 @@ async function loadRuntime() {
   }
 }
 
-/** Read the user-selected model id from storage, if any. */
-async function getStoredModel() {
+/**
+ * Read the local-model selection from storage.
+ *   - localModelId:     a PREBUILT MLC model id (the default path today).
+ *   - localModelConfig: a CUSTOM self-hosted model — { model, model_id,
+ *       model_lib, overrides? } — pointing WebLLM at weights you host yourself
+ *       (Cloudflare R2 / on-prem), e.g. a LANA fine-tuned legal model. Dormant
+ *       until set: with nothing configured we load the lightweight prebuilt.
+ * @returns {Promise<{localModelId: string|null, localModelConfig: object|null}>}
+ */
+async function getStoredSelection() {
   try {
-    const { localModelId } = await chrome.storage.local.get('localModelId');
-    return localModelId || null;
+    const { localModelId, localModelConfig } = await chrome.storage.local.get([
+      'localModelId',
+      'localModelConfig',
+    ]);
+    return { localModelId: localModelId || null, localModelConfig: localModelConfig || null };
   } catch {
-    return null;
+    return { localModelId: null, localModelConfig: null };
   }
+}
+
+/**
+ * Resolve the (modelId, engineConfig) to create. When a valid custom
+ * localModelConfig is present, build an appConfig that registers the
+ * self-hosted model so WebLLM fetches weights from your host; otherwise select
+ * a prebuilt model id (lightweight default).
+ *
+ * @param {string} [override] explicit model id override
+ * @returns {Promise<{modelId: string, engineConfig: object|undefined}>}
+ */
+async function resolveModel(override) {
+  if (override) return { modelId: override, engineConfig: undefined };
+  const { localModelId, localModelConfig } = await getStoredSelection();
+  const c = localModelConfig;
+  if (c && c.model && c.model_id && c.model_lib) {
+    // Custom self-hosted weights. `model` is the weights URL, `model_lib` the
+    // compiled WASM lib URL (reuse MLC's prebuilt lib for a same-architecture
+    // fine-tune, or self-host it). See docs/LOCAL_MODEL_WEIGHTS.md.
+    return {
+      modelId: c.model_id,
+      engineConfig: {
+        appConfig: {
+          model_list: [
+            {
+              model: c.model,
+              model_id: c.model_id,
+              model_lib: c.model_lib,
+              ...(c.overrides || {}),
+            },
+          ],
+        },
+      },
+    };
+  }
+  return { modelId: localModelId || DEFAULT_MODEL, engineConfig: undefined };
 }
 
 /**
@@ -94,8 +141,10 @@ async function getEngine(model) {
   if (_enginePromise) return _enginePromise;
   _enginePromise = (async () => {
     const webllm = await loadRuntime(); // throws webllm_not_vendored if absent
-    const modelId = model || (await getStoredModel()) || DEFAULT_MODEL;
-    const engine = await webllm.CreateMLCEngine(modelId);
+    const { modelId, engineConfig } = await resolveModel(model);
+    const engine = engineConfig
+      ? await webllm.CreateMLCEngine(modelId, engineConfig)
+      : await webllm.CreateMLCEngine(modelId);
     _engine = engine;
     return engine;
   })();
