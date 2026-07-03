@@ -613,11 +613,11 @@
   function buildTriggerButton() {
     triggerBtn = document.createElement('button');
     triggerBtn.className = 'acb-trigger';
-    triggerBtn.setAttribute('aria-label', 'AI Context Bridge');
+    triggerBtn.setAttribute('aria-label', 'LANA AI');
     triggerBtn.style.pointerEvents = 'auto';
     const iconUrl = chrome.runtime.getURL('icons/icon48.png');
     triggerBtn.innerHTML = `
-      <img class="acb-trigger-logo" src="${iconUrl}" alt="AI Context Bridge" />
+      <img class="acb-trigger-logo" src="${iconUrl}" alt="LANA AI" />
       <span class="acb-trigger-badge" id="acb-badge">0</span>
     `;
     triggerBtn.addEventListener('click', togglePanel);
@@ -641,7 +641,7 @@
       <!-- Header -->
       <div class="acb-header">
         <div class="acb-header-title">
-          <img class="acb-header-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="Slop" />
+          <img class="acb-header-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="LANA AI" />
         </div>
         <button class="acb-close-btn" aria-label="Close panel">
           ${ICONS.close}

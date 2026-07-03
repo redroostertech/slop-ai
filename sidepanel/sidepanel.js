@@ -1199,7 +1199,7 @@ document.getElementById('export-confirm-proceed')?.addEventListener('click', asy
   btn.textContent = 'Exporting\u2026';
   try {
     const content = await exportKnowledge('markdown', {});
-    downloadFile('ai-context-bridge-export.md', content);
+    downloadFile('lana-ai-export.md', content);
     try { await trackExport([], 'markdown'); } catch {}
     if (exportConfirmModal) exportConfirmModal.hidden = true;
   } catch (err) {
@@ -1538,7 +1538,7 @@ document.getElementById('export-download-btn')?.addEventListener('click', async 
   try {
     const content = await exportKnowledge(target, options);
     const ext = target === 'json' ? 'json' : 'md';
-    downloadFile(`ai-context-bridge-export.${ext}`, content);
+    downloadFile(`lana-ai-export.${ext}`, content);
     try { await trackExport(topicIds || [], target); } catch {}
   } catch (err) {
     showAlert('Export failed: ' + err.message, 'Error');
@@ -1871,7 +1871,7 @@ document.getElementById('backup-btn')?.addEventListener('click', async () => {
   const sums = await dbGetAll('summaries');
   const topics = await dbGetAll('topics');
   const backup = { version: '1.0', exportedAt: new Date().toISOString(), conversations: convs, summaries: sums, topics };
-  downloadFile('ai-context-bridge-backup.json', JSON.stringify(backup, null, 2));
+  downloadFile('lana-ai-backup.json', JSON.stringify(backup, null, 2));
 });
 
 document.getElementById('restore-btn')?.addEventListener('click', () => {
