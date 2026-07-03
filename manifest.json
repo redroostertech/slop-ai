@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Slop",
+  "name": "LANA AI",
   "version": "1.0.0",
-  "description": "Your AI conversations are scattered. Slop captures, summarizes, and injects your knowledge back — across ChatGPT, Claude, Gemini & Copilot.",
+  "description": "Capture, synthesize, and inject context from your ChatGPT, Claude, Gemini & Copilot sessions — and send it into your LANA AI account.",
   "permissions": [
     "sidePanel",
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://api.openai.com/*",
@@ -32,7 +34,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "Slop"
+    "default_title": "LANA AI"
   },
   "icons": {
     "16": "icons/icon16.png",

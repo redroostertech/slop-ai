@@ -3,8 +3,19 @@ import { findRelevantKnowledge, searchKnowledge } from '../lib/relevance.js';
 import { formatForInjection, formatBatchForInjection, formatConversationForInjection } from '../lib/injector.js';
 import { trackInjection, trackSearchHit, flush as flushTracker } from '../lib/tracker.js';
 import { dbGet, dbGetAll } from '../lib/db.js';
+// LANA AI account + hybrid inference cascade.
+import { getInstance, setInstance } from '../lib/instance.js';
+import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState } from '../lib/lana-auth.js';
+import { listMatters, sendKnowledge, sendMemory, sendDocument } from '../lib/lana-client.js';
+import { route as routeTask } from '../lib/router.js';
+// Capability modules.
+import { synthesizeHandoff } from '../lib/capabilities/handoff.js';
+import { importExportText } from '../lib/capabilities/import.js';
+import { saveClip } from '../lib/capabilities/research-capture.js';
+import { surface } from '../lib/capabilities/surface.js';
+import { proposeFills } from '../lib/capabilities/form-fill.js';
 
-console.log('[AI Context Bridge] Service worker loaded successfully');
+console.log('[LANA AI] Service worker loaded successfully');
 
 // Open side panel on toolbar click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -144,6 +155,93 @@ async function handleMessage(message, sender) {
       }
       return { ok: true };
     }
+
+    // ===== LANA AI: instance + auth =====
+    case 'LANA_INSTANCE_GET':
+      return { instance: await getInstance() };
+
+    case 'LANA_INSTANCE_SET':
+      // Changing instance invalidates any existing session for the old host.
+      await lanaLogout();
+      return { instance: await setInstance(message.instance) };
+
+    case 'LANA_AUTH_STATE':
+      return await getAuthState();
+
+    case 'LANA_LOGIN':
+      // Returns a minimal, non-secret view; tokens stay in storage.
+      await lanaLogin(message.email, message.password);
+      return await getAuthState();
+
+    case 'LANA_ADOPT_COOKIE': {
+      const rec = await adoptCookieSession();
+      return { adopted: !!rec, state: await getAuthState() };
+    }
+
+    case 'LANA_LOGOUT':
+      await lanaLogout();
+      return { ok: true };
+
+    // ===== LANA AI: account ingestion =====
+    case 'LANA_LIST_MATTERS':
+      return { matters: await listMatters() };
+
+    case 'LANA_SEND_KNOWLEDGE':
+      return await sendKnowledge(message.matterId, {
+        content: message.content,
+        sourceId: message.sourceId,
+      });
+
+    case 'LANA_SEND_MEMORY':
+      return await sendMemory({ fact: message.fact, matterId: message.matterId });
+
+    case 'LANA_SEND_DOCUMENT':
+      return await sendDocument({
+        filename: message.filename,
+        content: message.content,
+        matterId: message.matterId,
+        persist: message.persist,
+      });
+
+    // ===== LANA AI: hybrid inference cascade =====
+    // Background route uses the Prompt API locally (WebGPU/WebLLM isn't
+    // available in the service worker) or escalates to LANA. The sidepanel can
+    // import lib/router.js directly to get the WebLLM backend when vendored.
+    case 'LANA_ROUTE': {
+      const result = await routeTask(message.task);
+      return result;
+    }
+
+    // ===== LANA AI: capabilities =====
+    // Cross-platform handoff: consolidate captured conversations into a primer.
+    case 'LANA_HANDOFF':
+      return await synthesizeHandoff({
+        conversationIds: message.conversationIds,
+        targetSystem: message.targetSystem,
+        focus: message.focus,
+      });
+
+    // Import a ChatGPT/Claude export file's text into the local store.
+    case 'LANA_IMPORT':
+      return await importExportText(message.jsonText);
+
+    // Save a page clip extracted by the content script into the local store.
+    case 'LANA_SAVE_CLIP':
+      return await saveClip(message.clip);
+
+    // Surface relevant context from LANA (+ other registered sources).
+    case 'LANA_SURFACE':
+      return { results: await surface(message.query, message.options || {}) };
+
+    // Propose form fills (on-device / sensitive-pinned). Detection + apply run
+    // in the page (content script); only the reasoning runs here.
+    case 'LANA_PROPOSE_FILLS':
+      return await proposeFills({
+        fields: message.fields,
+        context: message.context,
+        allowedMemory: message.allowedMemory,
+        origin: message.origin,
+      });
 
     default:
       return { error: `Unknown message type: ${message.type}` };
