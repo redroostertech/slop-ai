@@ -651,9 +651,13 @@
         <div class="acb-header-title">
           <img class="acb-header-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="LANA AI" />
         </div>
-        <button class="acb-close-btn" aria-label="Close panel">
-          ${ICONS.close}
-        </button>
+        <div class="acb-head-actions">
+          <button class="acb-head-action" id="acb-clip-btn" title="Clip this page into your LANA library">Clip</button>
+          <button class="acb-head-action" id="acb-fill-btn" title="Fill a form on this page from your context">Fill</button>
+          <button class="acb-close-btn" aria-label="Close panel">
+            ${ICONS.close}
+          </button>
+        </div>
       </div>
 
       <!-- Context Bar -->
@@ -688,6 +692,8 @@
 
     // Wire up event listeners
     panelEl.querySelector('.acb-close-btn').addEventListener('click', closePanel);
+    panelEl.querySelector('#acb-clip-btn').addEventListener('click', onClipPage);
+    panelEl.querySelector('#acb-fill-btn').addEventListener('click', onFillForm);
 
     searchInput = panelEl.querySelector('#acb-search');
     searchInput.addEventListener('input', onSearchInput);
@@ -942,6 +948,38 @@
         reject(e);
       }
     });
+  }
+
+  // =========================================================================
+  // Clip + Form-fill triggers (5 AI sites only for now)
+  // =========================================================================
+  async function onClipPage() {
+    showToast('Clipping page…');
+    try {
+      const res = await sendMessage({ type: 'LANA_CLIP_ACTIVE_TAB' });
+      if (res?.error) throw new Error(res.error);
+      showToast('Clipped to your LANA library');
+    } catch (e) {
+      showToast('Clip failed: ' + e.message, true);
+    }
+  }
+
+  async function onFillForm() {
+    showToast('Scanning form…');
+    try {
+      // allowedMemory is empty until a memory-allowlist picker exists, so no
+      // account PII is eligible to leave the device yet — fills come only from
+      // the page context. The proposal preview arrives via LANA_FILL_PREVIEW.
+      const res = await sendMessage({
+        type: 'LANA_START_FORM_FILL',
+        context: `${document.title} — ${location.href}`,
+        allowedMemory: [],
+      });
+      if (res?.error) throw new Error(res.error);
+      if (!res?.count) showToast('No fillable fields found on this page');
+    } catch (e) {
+      showToast('Form fill failed: ' + e.message, true);
+    }
   }
 
   // =========================================================================
@@ -1856,6 +1894,9 @@
   display: flex; align-items: center; gap: 8px;
 }
 .acb-header-logo { width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0; }
+.acb-head-actions { display: flex; align-items: center; gap: 6px; }
+.acb-head-action { padding: 4px 9px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; color: #1d1d1f; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.acb-head-action:hover { background: #f3f4f6; border-color: #d1d5db; }
 .acb-close-btn {
   display: flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border: none; border-radius: 6px;

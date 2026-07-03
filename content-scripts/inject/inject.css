@@ -159,6 +159,31 @@
   flex-shrink: 0;
 }
 
+/* ---- Header action buttons (Clip / Fill) ---- */
+.acb-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acb-head-action {
+  padding: 4px 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.acb-head-action:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
 .acb-header-title svg {
   width: 18px;
   height: 18px;

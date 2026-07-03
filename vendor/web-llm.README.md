@@ -84,3 +84,44 @@ file is present — everything is guarded to no-op until it is.
   that does `import * as webllm from '../vendor/web-llm.js'; self.webllm = webllm;`).
   The background `offscreen-webllm` path does not need this — it imports the ESM
   directly.
+
+## Hosting — two separate things
+
+There are two artifacts, hosted differently:
+
+| Artifact | Size | Where it lives |
+|----------|------|----------------|
+| **WebLLM runtime** (`vendor/web-llm.js`) | ~1–2 MB | **Bundled in the extension package.** Ships with the extension; no external hosting. |
+| **Model weights** (e.g. Qwen2.5-1.5B q4) | ~0.9–1.5 GB | **Downloaded at first use, cached in-browser** (Cache API / IndexedDB). NOT bundled — too big for a Web Store package. This is the real hosting decision. |
+
+### Weight-hosting options
+
+- **A. HuggingFace / MLC CDN (default, zero-setup):** MLC's prebuilt weights live
+  on `huggingface.co` / their CDN. No hosting cost; one-time download per user,
+  then cached. Requires `connect-src` + host access for the weight host. Privacy:
+  the weight host sees the *download* request (never inference data).
+- **B. Self-host on Cloudflare R2 — RECOMMENDED for LANA.** Put the MLC weight
+  shards behind e.g. `https://weights.lanaai.io` and point WebLLM's
+  `appConfig.model_list[].model_url` at it. **R2 has no egress fees**, which is
+  ideal for large static files served to many users. Gives full control and a
+  consistent **sovereign** story (aligns with Forge's `x-sovereign` tier and the
+  legal/privacy positioning). Cost = storage + bandwidth.
+- **C. On-prem:** the customer hosts weights on their own box; their instance
+  config points `model_url` at it. Zero external egress — the on-brand default
+  for on-prem/enterprise.
+
+**Decision:** runtime is vendored in-package (above). For weights, self-host on
+**Cloudflare R2 (`weights.lanaai.io`)** as the product default, with the URL
+configurable so on-prem repoints to the customer's host. Fall back to the HF CDN
+only for a zero-setup dev/preview build.
+
+### What that requires in the extension
+
+Whichever weight host you choose, the offscreen document's `fetch()` needs it
+allowed:
+- add the weight origin to `host_permissions` (or request it at runtime), and
+- ensure the extension-page CSP permits `connect-src` to that origin (the
+  current CSP only constrains `script-src`/`object-src`, so `fetch()` to a
+  declared host works, but pin `connect-src` explicitly if you tighten the CSP).
+Set the model via `chrome.storage.local.localModelId` and, for self-hosting, a
+custom `appConfig` in `offscreen/offscreen.js`'s engine creation.
