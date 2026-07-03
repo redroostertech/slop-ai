@@ -1,0 +1,10 @@
+{
+  "name": "lana-ai-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LANA AI browser extension (dev metadata only; Chrome loads via manifest.json).",
+  "scripts": {
+    "test": "node test/router.decision.test.mjs"
+  }
+}

@@ -1,8 +1,12 @@
 # Vendoring the WebLLM (MLC) runtime
 
-The "WebGPU (WebLLM)" local backend needs the MLC **WebLLM** runtime bundled
-inside the extension. It is intentionally **not** committed here (multi-MB) and
-**cannot** be loaded from a CDN: the extension CSP is
+**Vendored:** `vendor/web-llm.js` is present (a ~6.3 MB single-file ESM bundled
+from `@mlc-ai/web-llm@^0.2`, exports `CreateMLCEngine`, CSP-verified: no external
+imports, no `eval`). The `offscreen-webllm` backend is live. The steps below are
+for **re-vendoring / upgrading** it.
+
+The MLC **WebLLM** runtime must be bundled inside the extension — it **cannot**
+be loaded from a CDN: the extension CSP is
 
 ```
 script-src 'self' 'wasm-unsafe-eval'; object-src 'self'
