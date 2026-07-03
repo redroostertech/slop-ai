@@ -976,7 +976,13 @@
         allowedMemory: [],
       });
       if (res?.error) throw new Error(res.error);
-      if (!res?.count) showToast('No fillable fields found on this page');
+      if (!res?.count) {
+        showToast('No fillable fields found on this page');
+      } else if (res.delivered === false) {
+        // Proposals exist but the preview couldn't be delivered to this tab.
+        showToast('Could not display the fill preview here', true);
+      }
+      // On success the preview arrives via the LANA_FILL_PREVIEW handler.
     } catch (e) {
       showToast('Form fill failed: ' + e.message, true);
     }

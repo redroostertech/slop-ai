@@ -254,36 +254,49 @@ async function handleMessage(message, sender) {
         origin: message.origin,
       });
 
-    // Clip the active (arbitrary) tab via chrome.scripting, then persist it.
-    // Works on any page under activeTab — no content script required.
+    // Clip the TRIGGERING tab via chrome.scripting, then persist it. Uses the
+    // sender's tab id (not a fresh active-tab query) so a tab switch during the
+    // operation can't clip the wrong page.
     case 'LANA_CLIP_ACTIVE_TAB': {
-      const clip = await clipActiveTab();
+      const clip = await clipActiveTab(sender.tab?.id);
       if (!clip || !clip.text?.trim()) return { error: 'Nothing to clip on this page.' };
       const saved = await saveClip(clip);
       return { ok: true, id: saved.id, clip };
     }
 
-    // Detect fields in the active tab → propose fills (on-device) → push the
-    // preview to the page's content script for per-field approval.
+    // Detect fields on the TRIGGERING tab → propose fills (on-device) → push the
+    // preview back to THAT SAME tab. Threading sender.tab.id through detect +
+    // origin + preview keeps (fields, origin, preview target) correlated even
+    // if the user switches tabs during the multi-second inference.
     case 'LANA_START_FORM_FILL': {
-      const fields = await detectFieldsActiveTab();
-      const origin = await activeTabOrigin();
+      const tabId = sender.tab?.id;
+      const fields = await detectFieldsActiveTab(tabId);
+      const origin = await activeTabOrigin(tabId);
       const { proposals } = await proposeFills({
         fields,
         context: message.context || '',
         allowedMemory: message.allowedMemory || [],
         origin,
       });
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        chrome.tabs.sendMessage(tab.id, { type: 'LANA_FILL_PREVIEW', proposals, origin }).catch(() => {});
+      if (proposals.length === 0) return { ok: true, count: 0, origin, delivered: false };
+      // Deliver the preview to the exact tab whose fields we scraped, and report
+      // whether it landed (the caller shows an error if it didn't).
+      let delivered = false;
+      if (typeof tabId === 'number') {
+        try {
+          await chrome.tabs.sendMessage(tabId, { type: 'LANA_FILL_PREVIEW', proposals, origin });
+          delivered = true;
+        } catch (_e) {
+          delivered = false;
+        }
       }
-      return { ok: true, count: proposals.length, origin };
+      return { ok: true, count: proposals.length, origin, delivered };
     }
 
-    // Apply ONE approved field (called from the preview surface).
+    // Apply ONE approved field to the TRIGGERING tab (called from that tab's
+    // preview surface, so sender.tab.id is the same tab the fields came from).
     case 'LANA_APPLY_FIELD':
-      return await applyFieldActiveTab(message.approved);
+      return await applyFieldActiveTab(message.approved, sender.tab?.id);
 
     default:
       return { error: `Unknown message type: ${message.type}` };

@@ -99,11 +99,9 @@ async function getStoredSelection() {
  * self-hosted model so WebLLM fetches weights from your host; otherwise select
  * a prebuilt model id (lightweight default).
  *
- * @param {string} [override] explicit model id override
  * @returns {Promise<{modelId: string, engineConfig: object|undefined}>}
  */
-async function resolveModel(override) {
-  if (override) return { modelId: override, engineConfig: undefined };
+async function resolveModel() {
   const { localModelId, localModelConfig } = await getStoredSelection();
   const c = localModelConfig;
   if (c && c.model && c.model_id && c.model_lib) {
@@ -131,17 +129,17 @@ async function resolveModel(override) {
 
 /**
  * Lazily create + cache the MLC engine. First call downloads the model, so it
- * can be slow; subsequent calls reuse the cached engine.
+ * can be slow; subsequent calls reuse the cached engine. The model is resolved
+ * from stored selection (no per-call override — the cache is single-model).
  *
- * @param {string} [model] explicit model id override
  * @returns {Promise<object>} the WebLLM engine
  */
-async function getEngine(model) {
+async function getEngine() {
   if (_engine) return _engine;
   if (_enginePromise) return _enginePromise;
   _enginePromise = (async () => {
     const webllm = await loadRuntime(); // throws webllm_not_vendored if absent
-    const { modelId, engineConfig } = await resolveModel(model);
+    const { modelId, engineConfig } = await resolveModel();
     const engine = engineConfig
       ? await webllm.CreateMLCEngine(modelId, engineConfig)
       : await webllm.CreateMLCEngine(modelId);
@@ -175,7 +173,7 @@ async function handle(message) {
     }
 
     case 'LOCAL_GENERATE': {
-      const engine = await getEngine(message.model);
+      const engine = await getEngine();
       const messages = Array.isArray(message.messages) ? message.messages : [];
       const options = message.options || {};
       const reply = await engine.chat.completions.create({
