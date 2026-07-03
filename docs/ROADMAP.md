@@ -41,3 +41,11 @@ Also for expansion:
   redaction posture per `lana-gpt/docs/EXTENSION_INFERENCE_PASSTHROUGH.md`.
 - **On-prem discovery** — pull instance/discovery URLs from RedRoosterTech-Web
   so cloud/on-prem instances are auto-configured.
+
+## Bigger bet: Model Control Plane
+
+Cross-app system to publish/version/resolve/verify/hot-swap local-model weights
+across every LANA runtime (WebLLM extension, llama.cpp iOS, vLLM Forge) — fine-tune
+once, deploy everywhere. Full spec: **`docs/MODEL_CONTROL_PLANE.md`**. The
+extension is the reference client; to be spec-compliant it still needs signature +
+hash verification added to the `localModelConfig` load path.
