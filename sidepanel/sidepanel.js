@@ -10,6 +10,8 @@ import { getKnowledgeHealth, getTrending, getStale, getUsageBySource } from '../
 import { trackView, trackExport } from '../lib/tracker.js';
 import { getProviders, saveProviders, hasEnabledProvider, testProvider, PROVIDER_DEFAULTS } from '../lib/ai-router.js';
 import { initEmbeddings, isModelLoaded, isModelLoading, embed, destroyEmbeddings } from '../lib/embeddings.js';
+import { mountConnect, selectInstance, connectViaCookie, connectViaLogin, disconnect } from './lana-connect.js';
+import { INSTANCE_PRESETS } from '../lib/instance.js';
 
 // ===== Generic Modal Helpers =====
 const _genericModal = document.getElementById('generic-modal');
@@ -1551,6 +1553,7 @@ let editingProviderId = null;
 async function initSettings() {
   await renderProviderList();
   updateEmbeddingsStatus();
+  refreshLanaAccount();
 
   // Storage stats
   const convCount = await dbCount('conversations');
@@ -1569,6 +1572,145 @@ async function initSettings() {
     embStats.textContent = embCount > 0 ? `${formatNumber(embCount)} summaries embedded` : 'No summaries embedded yet';
   }
 }
+
+// ===== LANA Account =====
+// The instance host permission is requested from lana-connect.js, which MUST run
+// synchronously off the user's click. Every handler below therefore fires its
+// connect action immediately (no awaited storage/DB reads before it) and keeps
+// the saved instance URL in `lanaInstanceUrlValue` so the permission request has
+// the origin on hand without an async lookup that would drop the user gesture.
+const lanaStatusDot = document.getElementById('lana-status-dot');
+const lanaStatusText = document.getElementById('lana-status-text');
+const lanaInstancePreset = document.getElementById('lana-instance-preset');
+const lanaInstanceUrlInput = document.getElementById('lana-instance-url');
+const lanaInstanceSaveBtn = document.getElementById('lana-instance-save');
+const lanaInstanceStatus = document.getElementById('lana-instance-status');
+const lanaConnectCookieBtn = document.getElementById('lana-connect-cookie');
+const lanaConnectLoginBtn = document.getElementById('lana-connect-login');
+const lanaEmailInput = document.getElementById('lana-email');
+const lanaPasswordInput = document.getElementById('lana-password');
+const lanaConnectStatus = document.getElementById('lana-connect-status');
+const lanaDisconnectBtn = document.getElementById('lana-disconnect');
+
+const LANA_CUSTOM = '__custom__';
+let lanaInstanceUrlValue = INSTANCE_PRESETS[0]?.url || '';
+
+function setLanaStatus(el, msg, kind) {
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = 'status-text' + (kind ? ' ' + kind : '');
+}
+
+function renderLanaAuth(state) {
+  const authed = !!(state && state.authenticated);
+  if (lanaStatusDot) lanaStatusDot.className = 'status-dot' + (authed ? ' loaded' : '');
+  if (lanaStatusText) {
+    lanaStatusText.textContent = authed
+      ? (state.email ? `Signed in as ${state.email}` : `Connected (${state.mode || 'session'})`)
+      : 'Not connected';
+  }
+  if (lanaDisconnectBtn) lanaDisconnectBtn.hidden = !authed;
+}
+
+if (lanaInstancePreset) {
+  lanaInstancePreset.innerHTML =
+    INSTANCE_PRESETS.map(p => `<option value="${escapeHtml(p.url)}">${escapeHtml(p.label)}</option>`).join('') +
+    `<option value="${LANA_CUSTOM}">Custom (on-prem)…</option>`;
+}
+
+// mountConnect immediately pulls the current auth state into the badge.
+const lanaConnect = mountConnect({ onState: renderLanaAuth });
+
+async function refreshLanaAccount() {
+  try {
+    const inst = await lanaConnect.getInstanceInfo();
+    if (inst?.url) {
+      lanaInstanceUrlValue = inst.url;
+      if (lanaInstanceUrlInput) lanaInstanceUrlInput.value = inst.url;
+      if (lanaInstancePreset) {
+        lanaInstancePreset.value = INSTANCE_PRESETS.some(p => p.url === inst.url) ? inst.url : LANA_CUSTOM;
+      }
+    }
+  } catch { /* SW unavailable — leave defaults */ }
+  lanaConnect.refresh();
+}
+
+lanaInstancePreset?.addEventListener('change', () => {
+  if (!lanaInstanceUrlInput) return;
+  if (lanaInstancePreset.value === LANA_CUSTOM) {
+    lanaInstanceUrlInput.value = '';
+    lanaInstanceUrlInput.focus();
+  } else {
+    lanaInstanceUrlInput.value = lanaInstancePreset.value;
+  }
+});
+
+// Save/Apply — sets the instance AND requests its host permission. selectInstance
+// fires chrome.permissions.request() before any awaited SW round-trip, so we must
+// call it directly from this click without awaiting anything first.
+lanaInstanceSaveBtn?.addEventListener('click', () => {
+  const url = (lanaInstanceUrlInput?.value || '').trim();
+  if (!url) { setLanaStatus(lanaInstanceStatus, 'Enter an instance URL.', 'error'); return; }
+  const preset = INSTANCE_PRESETS.find(p => p.url === url);
+  setLanaStatus(lanaInstanceStatus, 'Requesting access…', 'loading');
+  selectInstance({ url, label: preset?.label, kind: preset?.kind })
+    .then(({ granted, instance }) => {
+      lanaInstanceUrlValue = instance.url;
+      if (lanaInstanceUrlInput) lanaInstanceUrlInput.value = instance.url;
+      setLanaStatus(
+        lanaInstanceStatus,
+        granted
+          ? `Saved ${instance.label}. Access granted.`
+          : `Saved ${instance.label}, but host access was declined — connecting will fail until you grant it.`,
+        granted ? 'success' : 'error'
+      );
+      lanaConnect.refresh();
+    })
+    .catch(err => setLanaStatus(lanaInstanceStatus, err.message, 'error'));
+});
+
+// Connect with browser session — pass the known URL so the permission request
+// fires without an async lookup consuming the click gesture.
+lanaConnectCookieBtn?.addEventListener('click', () => {
+  setLanaStatus(lanaConnectStatus, 'Requesting access…', 'loading');
+  connectViaCookie(lanaInstanceUrlValue)
+    .then(res => {
+      renderLanaAuth(res?.state);
+      setLanaStatus(
+        lanaConnectStatus,
+        res?.adopted
+          ? 'Connected via browser session.'
+          : 'No active LANA session found in your browser. Sign in on the LANA site, or use email & password below.',
+        res?.adopted ? 'success' : 'error'
+      );
+    })
+    .catch(err => setLanaStatus(lanaConnectStatus, err.message, 'error'));
+});
+
+// Email/password sign-in.
+lanaConnectLoginBtn?.addEventListener('click', () => {
+  const email = (lanaEmailInput?.value || '').trim();
+  const password = lanaPasswordInput?.value || '';
+  if (!email || !password) { setLanaStatus(lanaConnectStatus, 'Enter email and password.', 'error'); return; }
+  setLanaStatus(lanaConnectStatus, 'Signing in…', 'loading');
+  connectViaLogin(email, password, lanaInstanceUrlValue)
+    .then(state => {
+      renderLanaAuth(state);
+      if (state?.authenticated) {
+        if (lanaPasswordInput) lanaPasswordInput.value = '';
+        setLanaStatus(lanaConnectStatus, 'Signed in.', 'success');
+      } else {
+        setLanaStatus(lanaConnectStatus, 'Sign in failed.', 'error');
+      }
+    })
+    .catch(err => setLanaStatus(lanaConnectStatus, err.message, 'error'));
+});
+
+lanaDisconnectBtn?.addEventListener('click', () => {
+  disconnect()
+    .then(() => { renderLanaAuth({ authenticated: false }); setLanaStatus(lanaConnectStatus, 'Disconnected.', ''); })
+    .catch(err => setLanaStatus(lanaConnectStatus, err.message, 'error'));
+});
 
 async function renderProviderList() {
   const providers = await getProviders();

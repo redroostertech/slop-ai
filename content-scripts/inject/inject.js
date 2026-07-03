@@ -590,6 +590,10 @@
             extractAndScore(true);
           }
         });
+      } else if (msg.type === 'LANA_FILL_PREVIEW') {
+        // Form-fill delivery layer (page-capture.js, via the service worker)
+        // has proposals ready — show the review surface. Never auto-applies.
+        showFillPreview(msg);
       }
     });
 
@@ -629,7 +633,11 @@
     backdropEl = document.createElement('div');
     backdropEl.className = 'acb-backdrop';
     backdropEl.style.pointerEvents = 'none';
-    backdropEl.addEventListener('click', closePanel);
+    backdropEl.addEventListener('click', () => {
+      // Close whichever surface is showing over the backdrop.
+      closeFillPreview();
+      closePanel();
+    });
     shadowRoot.appendChild(backdropEl);
   }
 
@@ -1417,6 +1425,179 @@
   }
 
   // =========================================================================
+  // Form-Fill Preview Surface (Capability #3)
+  //
+  // Safety contract (mirrors lib/capabilities/form-fill.js):
+  //   - PREVIEW + PER-FIELD CONFIRM: every proposed value is listed for review;
+  //     there is deliberately NO "apply all" button. Each field is a separate,
+  //     explicit approval.
+  //   - NEVER AUTO-SUBMIT: approving a field asks the service worker to run
+  //     applyFieldActiveTab (lib/page-capture.js), which only sets the value.
+  //     This UI never writes the page DOM itself.
+  //   - DOMAIN AWARENESS: the target origin is shown, with a stronger warning
+  //     when it differs from the current host (account data leaving for a
+  //     third party).
+  // Proposals arrive from the SW (LANA_PROPOSE_FILLS -> proposeFills) via a
+  // LANA_FILL_PREVIEW message; approval is relayed back via LANA_APPLY_FIELD.
+  // =========================================================================
+  let fillPanelEl = null;
+  let fillProposals = [];
+  let fillOrigin = '';
+
+  function ensureFillPanel() {
+    if (fillPanelEl) return fillPanelEl;
+    fillPanelEl = document.createElement('div');
+    fillPanelEl.className = 'acb-fill-panel';
+    fillPanelEl.style.pointerEvents = 'auto';
+    shadowRoot.appendChild(fillPanelEl);
+    return fillPanelEl;
+  }
+
+  function showFillPreview(payload) {
+    fillProposals = Array.isArray(payload && payload.proposals) ? payload.proposals : [];
+    fillOrigin = (payload && payload.origin) || '';
+    const panel = ensureFillPanel();
+    renderFillPreview();
+    panel.classList.add('open');
+    if (backdropEl) {
+      backdropEl.classList.add('visible');
+      backdropEl.style.pointerEvents = 'auto';
+    }
+  }
+
+  function closeFillPreview() {
+    if (fillPanelEl) fillPanelEl.classList.remove('open');
+    // Only release the backdrop if the main panel isn't also using it.
+    if (!isOpen && backdropEl) {
+      backdropEl.classList.remove('visible');
+      backdropEl.style.pointerEvents = 'none';
+    }
+  }
+
+  function renderFillPreview() {
+    if (!fillPanelEl) return;
+
+    let origin = '';
+    try {
+      origin = fillOrigin ? new URL(fillOrigin).hostname : '';
+    } catch (e) {
+      origin = fillOrigin;
+    }
+    const isThirdParty = !!origin && origin !== location.hostname;
+
+    let rowsHtml;
+    if (fillProposals.length === 0) {
+      rowsHtml = `
+        <div class="acb-empty">
+          <div class="acb-empty-title">No proposed fills</div>
+          <div class="acb-empty-desc">Nothing was proposed for this page's fields.</div>
+        </div>`;
+    } else {
+      rowsHtml = '';
+      for (let i = 0; i < fillProposals.length; i++) {
+        const p = fillProposals[i];
+        const conf = ['high', 'medium', 'low'].includes(p.confidence) ? p.confidence : 'low';
+        rowsHtml += `
+          <div class="acb-fill-row" data-fill-index="${i}">
+            <div class="acb-fill-head">
+              <span class="acb-fill-label">${escapeHtml(p.label || p.selector || 'Field')}</span>
+              <span class="acb-fill-confidence acb-conf-${conf}">${conf}</span>
+            </div>
+            <div class="acb-fill-value">${escapeHtml(p.value)}</div>
+            <div class="acb-fill-selector">${escapeHtml(p.selector || '')}</div>
+            <div class="acb-fill-actions">
+              <button class="acb-btn acb-btn-approve" data-fill-approve="${i}">Approve &amp; fill</button>
+              <span class="acb-fill-status" data-fill-status="${i}"></span>
+            </div>
+          </div>`;
+      }
+    }
+
+    const warnClass = isThirdParty ? 'acb-fill-warning third-party' : 'acb-fill-warning';
+    const warnHtml = fillOrigin
+      ? `<div class="${warnClass}">
+           ${isThirdParty ? '<strong>Third-party site.</strong> ' : ''}Values will be entered on
+           <strong>${escapeHtml(origin || fillOrigin)}</strong>. Approve each field individually — nothing is submitted for you.
+         </div>`
+      : '';
+
+    fillPanelEl.innerHTML = `
+      <div class="acb-header">
+        <div class="acb-header-title">Review form fills</div>
+        <button class="acb-close-btn acb-fill-close" aria-label="Close fill preview">${ICONS.close}</button>
+      </div>
+      ${warnHtml}
+      <div class="acb-fill-list">${rowsHtml}</div>
+    `;
+
+    const closeBtn = fillPanelEl.querySelector('.acb-fill-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeFillPreview);
+
+    const approveBtns = fillPanelEl.querySelectorAll('[data-fill-approve]');
+    approveBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-fill-approve'), 10);
+        onApproveFill(idx);
+      });
+    });
+  }
+
+  async function onApproveFill(index) {
+    if (index < 0 || index >= fillProposals.length) return;
+    const proposal = fillProposals[index];
+    const btn = fillPanelEl.querySelector(`[data-fill-approve="${index}"]`);
+    const statusEl = fillPanelEl.querySelector(`[data-fill-status="${index}"]`);
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Filling...';
+    }
+    if (statusEl) {
+      statusEl.textContent = '';
+      statusEl.className = 'acb-fill-status';
+    }
+
+    try {
+      const res = await sendMessage({
+        type: 'LANA_APPLY_FIELD',
+        approved: { selector: proposal.selector, value: proposal.value },
+      });
+
+      if (res && res.ok) {
+        if (statusEl) {
+          statusEl.textContent = 'Filled';
+          statusEl.className = 'acb-fill-status success';
+        }
+        if (btn) btn.textContent = 'Filled';
+      } else {
+        const reason = (res && (res.reason || res.error)) || 'failed';
+        const label =
+          reason === 'ambiguous_selector' ? 'Skipped — field is ambiguous'
+          : reason === 'not_found' ? 'Skipped — field not found'
+          : reason === 'invalid_selector' ? 'Skipped — invalid selector'
+          : 'Failed';
+        if (statusEl) {
+          statusEl.textContent = label;
+          statusEl.className = 'acb-fill-status error';
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+        }
+      }
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = 'Error: ' + (err && err.message ? err.message : 'unknown');
+        statusEl.className = 'acb-fill-status error';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    }
+  }
+
+  // =========================================================================
   // Chat Input Detection & Insertion (content script version)
   // =========================================================================
   function findChatInput() {
@@ -1861,6 +2042,80 @@
   opacity: 1; pointer-events: auto;
   transition: opacity 0.25s ease;
 }
+
+/* Form-Fill Preview Panel */
+.acb-fill-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 360px; max-width: 92vw; z-index: 1000000;
+  display: flex; flex-direction: column;
+  background: #f5f5f7;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.12);
+  transform: translateX(100%); opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  pointer-events: none;
+}
+.acb-fill-panel.open {
+  transform: translateX(0); opacity: 1; pointer-events: auto;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+.acb-fill-warning {
+  padding: 10px 16px; font-size: 11px; line-height: 1.45;
+  color: #92400e; background: #fffbeb; border-bottom: 1px solid #fde68a;
+  flex-shrink: 0;
+}
+.acb-fill-warning.third-party {
+  color: #991b1b; background: #fef2f2; border-bottom-color: #fecaca;
+}
+.acb-fill-warning strong { font-weight: 700; }
+.acb-fill-list {
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 0;
+  scrollbar-width: thin; scrollbar-color: #d1d5db transparent;
+}
+.acb-fill-list::-webkit-scrollbar { width: 4px; }
+.acb-fill-list::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+.acb-fill-row {
+  margin: 0 10px 8px; padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,0.04); border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+}
+.acb-fill-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 6px;
+}
+.acb-fill-label {
+  font-size: 13px; font-weight: 600; color: #1d1d1f; line-height: 1.35;
+  word-break: break-word;
+}
+.acb-fill-confidence {
+  flex-shrink: 0; padding: 1px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.acb-conf-high { background: #dcfce7; color: #15803d; }
+.acb-conf-medium { background: #fef9c3; color: #a16207; }
+.acb-conf-low { background: #f3f4f6; color: #6b7280; }
+.acb-fill-value {
+  font-size: 12px; color: #374151; line-height: 1.5;
+  padding: 6px 8px; margin-bottom: 6px;
+  background: #f9fafb; border: 1px solid #eef2f7; border-radius: 6px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.acb-fill-selector {
+  font-size: 10px; color: #9ca3af; margin-bottom: 10px;
+  font-family: 'SF Mono', Menlo, monospace; word-break: break-all;
+}
+.acb-fill-actions { display: flex; align-items: center; gap: 10px; }
+.acb-btn-approve {
+  background: linear-gradient(135deg, #262624, #0D0D0D);
+  color: #F2F2F2; border-color: transparent;
+  box-shadow: 0 2px 8px rgba(13,13,13,0.3), 0 1px 3px rgba(0,0,0,0.15);
+}
+.acb-btn-approve:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(13,13,13,0.4); }
+.acb-btn-approve:disabled { opacity: 0.5; cursor: default; }
+.acb-fill-status { font-size: 11px; font-weight: 600; }
+.acb-fill-status.success { color: #15803d; }
+.acb-fill-status.error { color: #dc2626; }
 
 /* Responsive */
 @media (max-width: 480px) {

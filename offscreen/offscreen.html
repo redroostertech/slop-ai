@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LANA AI — WebLLM offscreen worker</title>
+  </head>
+  <body>
+    <!--
+      Hidden offscreen document. It exists only to give WebLLM a context with
+      navigator.gpu (WebGPU), which MV3 service workers do not have. There is no
+      UI here; all work is driven by runtime messages from the service worker.
+      See offscreen/offscreen.js and lib/offscreen-manager.js.
+    -->
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>

@@ -726,6 +726,46 @@
 
     <div class="card">
       <div class="card-header">
+        <span class="card-title">LANA Account</span>
+        <span class="card-subtitle">Connect to your LANA instance</span>
+      </div>
+      <div class="card-body">
+        <div class="embeddings-status lana-status">
+          <span class="status-dot" id="lana-status-dot"></span>
+          <span id="lana-status-text">Not connected</span>
+        </div>
+
+        <div class="input-row">
+          <label for="lana-instance-preset">Instance:</label>
+          <select id="lana-instance-preset" class="select-input" style="flex:1"></select>
+        </div>
+        <div class="input-row">
+          <input type="text" id="lana-instance-url" class="text-input" placeholder="https://gpt.lanaai.io" style="flex:1">
+          <button class="btn btn-secondary btn-small" id="lana-instance-save">Save</button>
+        </div>
+        <p id="lana-instance-status" class="status-text"></p>
+
+        <button class="btn btn-primary btn-full" id="lana-connect-cookie">Connect with browser session</button>
+
+        <details class="lana-login">
+          <summary>Sign in with email &amp; password</summary>
+          <div class="input-row" style="margin-top:0.5rem">
+            <input type="email" id="lana-email" class="text-input" placeholder="Email" style="flex:1" autocomplete="username">
+          </div>
+          <div class="input-row">
+            <input type="password" id="lana-password" class="text-input" placeholder="Password" style="flex:1" autocomplete="current-password">
+          </div>
+          <button class="btn btn-primary btn-full" id="lana-connect-login">Sign in</button>
+        </details>
+
+        <p id="lana-connect-status" class="status-text"></p>
+
+        <button class="btn btn-danger btn-full" id="lana-disconnect" hidden>Disconnect</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
         <span class="card-title">AI Providers</span>
         <span class="card-subtitle">Configure your AI connections</span>
       </div>

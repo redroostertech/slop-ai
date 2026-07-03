@@ -1527,6 +1527,23 @@ section[hidden] { display: none; }
   font-size: var(--font-size-md);
 }
 
+/* LANA account connect */
+.lana-status {
+  margin-bottom: 0.6rem;
+}
+
+.lana-login {
+  margin-top: 0.5rem;
+}
+
+.lana-login > summary {
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-brand-primary);
+  padding: 0.25rem 0;
+  user-select: none;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

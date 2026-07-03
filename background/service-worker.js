@@ -14,11 +14,22 @@ import { importExportText } from '../lib/capabilities/import.js';
 import { saveClip } from '../lib/capabilities/research-capture.js';
 import { surface } from '../lib/capabilities/surface.js';
 import { proposeFills } from '../lib/capabilities/form-fill.js';
+// Any-page capability delivery (chrome.scripting on the active tab).
+import { clipActiveTab, detectFieldsActiveTab, applyFieldActiveTab, activeTabOrigin } from '../lib/page-capture.js';
+// WebLLM offscreen document (WebGPU is unavailable in the service worker).
+import { ensureOffscreen } from '../lib/offscreen-manager.js';
 
 console.log('[LANA AI] Service worker loaded successfully');
 
 // Open side panel on toolbar click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
+// Warm the WebLLM offscreen document up front (best-effort). No-ops if the
+// "offscreen" permission or the vendored runtime is missing; the router also
+// creates it lazily on first use.
+ensureOffscreen().catch((err) =>
+  console.warn('[LANA AI] ensureOffscreen failed:', err?.message || err)
+);
 
 // Message router — connects content scripts to lib modules
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -242,6 +253,37 @@ async function handleMessage(message, sender) {
         allowedMemory: message.allowedMemory,
         origin: message.origin,
       });
+
+    // Clip the active (arbitrary) tab via chrome.scripting, then persist it.
+    // Works on any page under activeTab — no content script required.
+    case 'LANA_CLIP_ACTIVE_TAB': {
+      const clip = await clipActiveTab();
+      if (!clip || !clip.text?.trim()) return { error: 'Nothing to clip on this page.' };
+      const saved = await saveClip(clip);
+      return { ok: true, id: saved.id, clip };
+    }
+
+    // Detect fields in the active tab → propose fills (on-device) → push the
+    // preview to the page's content script for per-field approval.
+    case 'LANA_START_FORM_FILL': {
+      const fields = await detectFieldsActiveTab();
+      const origin = await activeTabOrigin();
+      const { proposals } = await proposeFills({
+        fields,
+        context: message.context || '',
+        allowedMemory: message.allowedMemory || [],
+        origin,
+      });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'LANA_FILL_PREVIEW', proposals, origin }).catch(() => {});
+      }
+      return { ok: true, count: proposals.length, origin };
+    }
+
+    // Apply ONE approved field (called from the preview surface).
+    case 'LANA_APPLY_FIELD':
+      return await applyFieldActiveTab(message.approved);
 
     default:
       return { error: `Unknown message type: ${message.type}` };

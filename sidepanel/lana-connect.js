@@ -18,7 +18,7 @@
  * @module sidepanel/lana-connect
  */
 
-import { getInstance, setInstance, ensureHostPermission } from '../lib/instance.js';
+import { ensureHostPermission, normalizeInstanceUrl } from '../lib/instance.js';
 
 /** Ask the SW to run an auth/account operation. */
 function send(message) {
@@ -33,25 +33,39 @@ export function getState() {
   return send({ type: 'LANA_AUTH_STATE' });
 }
 
+/** The currently-configured instance (for populating the Settings field). */
+export function getInstanceInfo() {
+  return send({ type: 'LANA_INSTANCE_GET' }).then((r) => r.instance);
+}
+
 /** Set/point the instance (cloud or on-prem), then request its host permission.
  * MUST be invoked from a click handler (user gesture) for the permission prompt.
+ *
+ * GESTURE ORDER: we normalize the URL synchronously and fire the permission
+ * request FIRST, before the awaited LANA_INSTANCE_SET round-trip to the SW.
+ * Awaiting that message first would consume the transient user activation and
+ * Chrome would reject chrome.permissions.request().
+ *
  * @param {{url: string, label?: string, kind?: string}} instance
  * @returns {Promise<{granted: boolean, instance: Object}>}
  */
 export async function selectInstance(instance) {
+  const url = normalizeInstanceUrl(instance.url); // sync — keeps the gesture
+  const granted = await ensureHostPermission(url); // user-gesture required
   const { instance: stored } = await send({ type: 'LANA_INSTANCE_SET', instance });
-  const granted = await ensureHostPermission(stored.url); // user-gesture required
   return { granted, instance: stored };
 }
 
 /**
  * Connect by adopting an existing browser cookie session on the instance.
  * Requests host permission first (needs the grant to send credentials:include).
+ * Pass the known instance URL so the permission request fires without an async
+ * storage read consuming the click's user gesture.
+ * @param {string} [instanceUrl] the configured instance origin
  * @returns {Promise<{adopted: boolean, state: Object}>}
  */
-export async function connectViaCookie() {
-  const instance = await getInstance();
-  const granted = await ensureHostPermission(instance.url); // user gesture
+export async function connectViaCookie(instanceUrl) {
+  const granted = await ensureHostPermission(instanceUrl); // user gesture
   if (!granted) throw new Error('Permission to reach the LANA instance was declined.');
   return send({ type: 'LANA_ADOPT_COOKIE' });
 }
@@ -60,11 +74,11 @@ export async function connectViaCookie() {
  * Connect by explicit email/password login.
  * @param {string} email
  * @param {string} password
+ * @param {string} [instanceUrl] the configured instance origin
  * @returns {Promise<Object>} auth state
  */
-export async function connectViaLogin(email, password) {
-  const instance = await getInstance();
-  const granted = await ensureHostPermission(instance.url); // user gesture
+export async function connectViaLogin(email, password, instanceUrl) {
+  const granted = await ensureHostPermission(instanceUrl); // user gesture
   if (!granted) throw new Error('Permission to reach the LANA instance was declined.');
   return send({ type: 'LANA_LOGIN', email, password });
 }
@@ -86,5 +100,5 @@ export function mountConnect(opts = {}) {
     return state;
   };
   refresh();
-  return { refresh, selectInstance, connectViaCookie, connectViaLogin, disconnect };
+  return { refresh, getInstanceInfo, selectInstance, connectViaCookie, connectViaLogin, disconnect };
 }
