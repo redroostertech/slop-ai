@@ -71,7 +71,24 @@ export async function connectViaCookie(instanceUrl) {
 }
 
 /**
- * Connect by explicit email/password login.
+ * PRIMARY connect path: Authorize LANA GPT via OAuth 2.0 + PKCE. Requests host
+ * permission first (needs the click's user gesture — this must be the FIRST
+ * await), then the SW runs launchWebAuthFlow. Pass the known instance URL so the
+ * permission request fires without an async storage read consuming the gesture.
+ * @param {string} [instanceUrl] the configured instance origin
+ * @returns {Promise<Object>} auth state
+ */
+export async function connectViaOAuth(instanceUrl) {
+  const granted = await ensureHostPermission(instanceUrl); // user gesture (must be first)
+  if (!granted) throw new Error('Permission to reach the LANA instance was declined.');
+  // launchWebAuthFlow does not itself require a user gesture, so the SW round-trip
+  // after the grant is fine.
+  return send({ type: 'LANA_AUTHORIZE' });
+}
+
+/**
+ * Connect by explicit email/password login (legacy / on-prem fallback — OAuth is
+ * primary; see connectViaOAuth and contract §1.6).
  * @param {string} email
  * @param {string} password
  * @param {string} [instanceUrl] the configured instance origin
@@ -100,5 +117,5 @@ export function mountConnect(opts = {}) {
     return state;
   };
   refresh();
-  return { refresh, getInstanceInfo, selectInstance, connectViaCookie, connectViaLogin, disconnect };
+  return { refresh, getInstanceInfo, selectInstance, connectViaOAuth, connectViaCookie, connectViaLogin, disconnect };
 }

@@ -5,7 +5,7 @@ import { trackInjection, trackSearchHit, flush as flushTracker } from '../lib/tr
 import { dbGet, dbGetAll } from '../lib/db.js';
 // LANA AI account + hybrid inference cascade.
 import { getInstance, setInstance, normalizeInstanceUrl } from '../lib/instance.js';
-import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState } from '../lib/lana-auth.js';
+import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState, authorizeOAuth, getEntitlements } from '../lib/lana-auth.js';
 import { listMatters, sendKnowledge, sendMemory, sendDocument } from '../lib/lana-client.js';
 import { route as routeTask } from '../lib/router.js';
 // Capability modules.
@@ -38,8 +38,8 @@ ensureOffscreen().catch((err) =>
 // quota via chrome.runtime.sendMessage. (The clip/fill triggers are content-
 // script-initiated by design and return no account data, so they're allowed.)
 const EXTENSION_ONLY_MESSAGES = new Set([
-  'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_LOGIN',
-  'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
+  'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_AUTHORIZE',
+  'LANA_LOGIN', 'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
   'LANA_SEND_MEMORY', 'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF',
   'LANA_IMPORT', 'LANA_SURFACE', 'LANA_PROPOSE_FILLS',
 ]);
@@ -71,6 +71,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   });
   return true; // keep channel open for async response
 });
+
+/** Auth state + UX-only entitlements — the single shape every auth handler returns. */
+async function fullAuthState() {
+  const [state, entitlements] = await Promise.all([getAuthState(), getEntitlements()]);
+  return { ...state, entitlements };
+}
 
 async function handleMessage(message, sender) {
   switch (message.type) {
@@ -209,16 +215,25 @@ async function handleMessage(message, sender) {
     }
 
     case 'LANA_AUTH_STATE':
-      return await getAuthState();
+      // Auth state + UX-only entitlements (server enforces authz regardless).
+      return await fullAuthState();
+
+    // Authorize LANA GPT via OAuth 2.0 + PKCE. Runs here because chrome.identity
+    // .launchWebAuthFlow needs the extension context; the sidepanel requests the
+    // host permission (user gesture) before sending this. Returns the full state
+    // (incl. entitlements) so the UI can gate features immediately after auth.
+    case 'LANA_AUTHORIZE':
+      await authorizeOAuth();
+      return await fullAuthState();
 
     case 'LANA_LOGIN':
-      // Returns a minimal, non-secret view; tokens stay in storage.
+      // Legacy email/password (kept for on-prem per contract §1.6). OAuth is primary.
       await lanaLogin(message.email, message.password);
-      return await getAuthState();
+      return await fullAuthState();
 
     case 'LANA_ADOPT_COOKIE': {
       const rec = await adoptCookieSession();
-      return { adopted: !!rec, state: await getAuthState() };
+      return { adopted: !!rec, state: await fullAuthState() };
     }
 
     case 'LANA_LOGOUT':

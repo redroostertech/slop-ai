@@ -10,7 +10,7 @@ import { getKnowledgeHealth, getTrending, getStale, getUsageBySource } from '../
 import { trackView, trackExport } from '../lib/tracker.js';
 import { getProviders, saveProviders, hasEnabledProvider, testProvider, PROVIDER_DEFAULTS } from '../lib/ai-router.js';
 import { initEmbeddings, isModelLoaded, isModelLoading, embed, destroyEmbeddings } from '../lib/embeddings.js';
-import { mountConnect, selectInstance, connectViaCookie, connectViaLogin, disconnect } from './lana-connect.js';
+import { mountConnect, selectInstance, connectViaOAuth, connectViaCookie, connectViaLogin, disconnect } from './lana-connect.js';
 import { INSTANCE_PRESETS } from '../lib/instance.js';
 
 // ===== Generic Modal Helpers =====
@@ -1585,6 +1585,7 @@ const lanaInstancePreset = document.getElementById('lana-instance-preset');
 const lanaInstanceUrlInput = document.getElementById('lana-instance-url');
 const lanaInstanceSaveBtn = document.getElementById('lana-instance-save');
 const lanaInstanceStatus = document.getElementById('lana-instance-status');
+const lanaAuthorizeBtn = document.getElementById('lana-authorize');
 const lanaConnectCookieBtn = document.getElementById('lana-connect-cookie');
 const lanaConnectLoginBtn = document.getElementById('lana-connect-login');
 const lanaEmailInput = document.getElementById('lana-email');
@@ -1610,6 +1611,10 @@ function renderLanaAuth(state) {
       : 'Not connected';
   }
   if (lanaDisconnectBtn) lanaDisconnectBtn.hidden = !authed;
+  // Entitlement-gated UI (UX only — server enforces). BYO providers stay hidden
+  // unless the org is explicitly entitled to them.
+  const providersCard = document.getElementById('ai-providers-card');
+  if (providersCard) providersCard.hidden = !(state && state.entitlements && state.entitlements.byo_providers === true);
 }
 
 if (lanaInstancePreset) {
@@ -1669,8 +1674,24 @@ lanaInstanceSaveBtn?.addEventListener('click', () => {
     .catch(err => setLanaStatus(lanaInstanceStatus, err.message, 'error'));
 });
 
-// Connect with browser session — pass the known URL so the permission request
-// fires without an async lookup consuming the click gesture.
+// PRIMARY: Authorize LANA GPT (OAuth). Pass the known URL so the permission
+// request fires without an async lookup consuming the click gesture.
+lanaAuthorizeBtn?.addEventListener('click', () => {
+  setLanaStatus(lanaConnectStatus, 'Opening LANA GPT to authorize…', 'loading');
+  connectViaOAuth(lanaInstanceUrlValue)
+    .then(state => {
+      renderLanaAuth(state);
+      setLanaStatus(
+        lanaConnectStatus,
+        state?.authenticated ? 'Authorized.' : 'Authorization did not complete.',
+        state?.authenticated ? 'success' : 'error'
+      );
+    })
+    .catch(err => setLanaStatus(lanaConnectStatus, err.message, 'error'));
+});
+
+// Fallback: connect with an existing browser session — pass the known URL so the
+// permission request fires without an async lookup consuming the click gesture.
 lanaConnectCookieBtn?.addEventListener('click', () => {
   setLanaStatus(lanaConnectStatus, 'Requesting access…', 'loading');
   connectViaCookie(lanaInstanceUrlValue)

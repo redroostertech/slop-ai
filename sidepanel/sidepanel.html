@@ -745,17 +745,18 @@
         </div>
         <p id="lana-instance-status" class="status-text"></p>
 
-        <button class="btn btn-primary btn-full" id="lana-connect-cookie">Connect with browser session</button>
+        <button class="btn btn-primary btn-full" id="lana-authorize">Authorize LANA GPT</button>
 
         <details class="lana-login">
-          <summary>Sign in with email &amp; password</summary>
+          <summary>More ways to connect</summary>
+          <button class="btn btn-secondary btn-full" id="lana-connect-cookie" style="margin-top:0.5rem">Use browser session</button>
           <div class="input-row" style="margin-top:0.5rem">
             <input type="email" id="lana-email" class="text-input" placeholder="Email" style="flex:1" autocomplete="username">
           </div>
           <div class="input-row">
             <input type="password" id="lana-password" class="text-input" placeholder="Password" style="flex:1" autocomplete="current-password">
           </div>
-          <button class="btn btn-primary btn-full" id="lana-connect-login">Sign in</button>
+          <button class="btn btn-secondary btn-full" id="lana-connect-login">Sign in with email</button>
         </details>
 
         <p id="lana-connect-status" class="status-text"></p>
@@ -764,7 +765,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="ai-providers-card" hidden>
       <div class="card-header">
         <span class="card-title">AI Providers</span>
         <span class="card-subtitle">Configure your AI connections</span>
