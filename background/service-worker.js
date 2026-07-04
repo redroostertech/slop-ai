@@ -4,7 +4,7 @@ import { formatForInjection, formatBatchForInjection, formatConversationForInjec
 import { trackInjection, trackSearchHit, flush as flushTracker } from '../lib/tracker.js';
 import { dbGet, dbGetAll } from '../lib/db.js';
 // LANA AI account + hybrid inference cascade.
-import { getInstance, setInstance } from '../lib/instance.js';
+import { getInstance, setInstance, normalizeInstanceUrl } from '../lib/instance.js';
 import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState } from '../lib/lana-auth.js';
 import { listMatters, sendKnowledge, sendMemory, sendDocument } from '../lib/lana-client.js';
 import { route as routeTask } from '../lib/router.js';
@@ -31,14 +31,42 @@ ensureOffscreen().catch((err) =>
   console.warn('[LANA AI] ensureOffscreen failed:', err?.message || err)
 );
 
-// Message router — connects content scripts to lib modules
+// Message types that touch the authenticated LANA account, inference, or the
+// account config. These must come from an EXTENSION PAGE (sidepanel/offscreen),
+// never a content script — otherwise a malicious/XSS'd script on one of the 5
+// AI sites could read matters/account data, write to matters, or spend inference
+// quota via chrome.runtime.sendMessage. (The clip/fill triggers are content-
+// script-initiated by design and return no account data, so they're allowed.)
+const EXTENSION_ONLY_MESSAGES = new Set([
+  'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_LOGIN',
+  'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
+  'LANA_SEND_MEMORY', 'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF',
+  'LANA_IMPORT', 'LANA_SURFACE', 'LANA_PROPOSE_FILLS',
+]);
+
+/** True only for messages from one of this extension's own pages (not a tab/content script). */
+function isTrustedExtensionSender(sender) {
+  return (
+    !!sender &&
+    sender.id === chrome.runtime.id &&
+    !sender.tab && // content scripts carry a tab; extension pages don't
+    typeof sender.url === 'string' &&
+    sender.url.startsWith(`chrome-extension://${chrome.runtime.id}/`)
+  );
+}
+
+// Message router — connects content scripts + extension pages to lib modules
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[AI Context Bridge] Received message:', message.type);
+  // Reject account/inference messages that don't come from a trusted extension page.
+  if (EXTENSION_ONLY_MESSAGES.has(message?.type) && !isTrustedExtensionSender(sender)) {
+    console.warn('[LANA AI] Rejected untrusted sender for', message?.type, sender?.url);
+    sendResponse({ error: 'forbidden_sender' });
+    return false;
+  }
   handleMessage(message, sender).then(result => {
-    console.log('[AI Context Bridge] Sending response for:', message.type, result ? 'ok' : 'empty');
     sendResponse(result);
   }).catch(err => {
-    console.error('[AI Context Bridge] Message error:', message.type, err);
+    console.error('[LANA AI] Message error:', message.type, err);
     sendResponse({ error: err.message });
   });
   return true; // keep channel open for async response
@@ -171,10 +199,14 @@ async function handleMessage(message, sender) {
     case 'LANA_INSTANCE_GET':
       return { instance: await getInstance() };
 
-    case 'LANA_INSTANCE_SET':
+    case 'LANA_INSTANCE_SET': {
+      // Validate the URL BEFORE clearing auth — a malformed URL must not log the
+      // user out while failing to change the instance.
+      const url = normalizeInstanceUrl(message.instance?.url);
       // Changing instance invalidates any existing session for the old host.
       await lanaLogout();
-      return { instance: await setInstance(message.instance) };
+      return { instance: await setInstance({ ...message.instance, url }) };
+    }
 
     case 'LANA_AUTH_STATE':
       return await getAuthState();
