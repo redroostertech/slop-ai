@@ -40,6 +40,10 @@
   /* ---- ground ---- */
   position: fixed;
   inset: 0;
+  /* Sit above ALL legacy sidepanel content (dashboard donut, spinners, modals)
+     so nothing bleeds through the new shell. When the user opens "Advanced",
+     the shell is display:none, so legacy modals show normally. */
+  z-index: 2147483000;
   display: flex;
   flex-direction: column;
   background: var(--l-bg);

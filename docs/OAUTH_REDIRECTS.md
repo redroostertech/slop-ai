@@ -28,13 +28,16 @@ load resolves to the same ID on any machine/checkout:
 both the api and web services). Dev builds target `http://localhost:3000`
 automatically (see `lib/env.js`).
 
-Private key: `keys/dev-extension.pem` (gitignored via `*.pem`). It is **not**
+Private key: `~/Documents/ai-context-bridge-keys/dev-extension.pem` — kept
+**outside** the extension folder so Chrome doesn't warn about a bundled key file
+(it's not needed to load unpacked; the public `key` in `manifest.json` fixes the
+id). It is **not**
 needed to load unpacked — the pinned public `"key"` alone fixes the ID. Keep it
 only if you later want to pack a signed `.crx` with this identity. To reproduce
 the ID from the key:
 
 ```sh
-openssl rsa -in keys/dev-extension.pem -pubout -outform DER -out /tmp/p.der
+openssl rsa -in ~/Documents/ai-context-bridge-keys/dev-extension.pem -pubout -outform DER -out /tmp/p.der
 node -e 'const d=require("fs").readFileSync("/tmp/p.der");\
 const h=require("crypto").createHash("sha256").update(d).digest("hex").slice(0,32);\
 console.log([...h].map(c=>String.fromCharCode(97+parseInt(c,16))).join(""))'
