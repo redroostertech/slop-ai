@@ -358,6 +358,12 @@ let liveCaptureInterval = null;
 
 function startLiveCapturePolling() {
   stopLiveCapturePolling();
+  // Don't poll behind the new UI shell: the legacy dashboard is covered by the
+  // opaque fixed `.lana-shell`, so a 5s CAPTURE_STATUS round-trip would keep the
+  // MV3 service worker awake for output the user can't see. Only poll when the
+  // legacy surface is actually visible (shell hidden via "Advanced").
+  const shell = document.getElementById('lana-shell');
+  if (shell && getComputedStyle(shell).display !== 'none') return;
   liveCaptureInterval = setInterval(refreshLiveCaptures, 5000);
 }
 
@@ -367,6 +373,9 @@ function stopLiveCapturePolling() {
     liveCaptureInterval = null;
   }
 }
+// Bridge so the new shell controller (lana-ui.js) can halt legacy polling when
+// it takes the surface back over.
+if (typeof window !== 'undefined') window.__lanaStopLegacyPolling = stopLiveCapturePolling;
 
 async function refreshLiveCaptures() {
   const card = document.getElementById('live-captures-card');

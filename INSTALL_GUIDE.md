@@ -1,104 +1,80 @@
-# Slop - Installation & Setup Guide
+# LANA AI — Installation & Setup Guide
 
-Your AI conversations are scattered across ChatGPT, Claude, Gemini, and Copilot. Slop captures, summarizes, and injects your knowledge back — so every new conversation benefits from what you've already learned.
+LANA AI is LANA GPT projected into your browser: capture what you research across
+ChatGPT, Claude, Gemini, and Copilot, ground it in your matters, and act on it.
 
-All data stays on your device. No accounts, no cloud sync, no tracking.
+**Local-first and private by default.** Captured data stays on your device, and
+nothing syncs to your LANA account until you authorize it. When you do send
+(filing to a matter, or escalating a heavy question to LANA cloud), content is
+minimized and redacted before it leaves — not "nothing ever leaves."
 
 ---
 
 ## Step 1: Install the Extension
 
-1. Unzip the `slop.zip` file to a folder on your computer (e.g., `Desktop/slop`)
-2. Open **Google Chrome** and navigate to `chrome://extensions`
-3. Toggle **Developer mode** ON (top-right corner)
-4. Click **Load unpacked**
-5. Select the unzipped folder (the one containing `manifest.json`)
-6. Slop will appear in your extensions list with a green puzzle-piece icon
+1. Unzip the `lana-ai.zip` file to a folder on your computer (e.g., `Desktop/lana-ai`).
+2. Open **Google Chrome** and navigate to `chrome://extensions`.
+3. Toggle **Developer mode** ON (top-right corner).
+4. Click **Load unpacked**.
+5. Select the unzipped folder (the one containing `manifest.json`).
+6. LANA AI will appear in your extensions list.
 
-> **Tip:** Pin the extension by clicking the puzzle icon in Chrome's toolbar, then clicking the pin next to "Slop."
-
----
-
-## Step 2: Set Up an AI Provider
-
-Slop needs an AI provider to summarize your conversations and extract insights. You can use **OpenAI**, **Anthropic Claude**, or **Google Gemini**.
-
-### Open Settings
-
-1. Click the **Slop** icon in Chrome's toolbar — the side panel will open
-2. Click the **gear icon** (top-right of the side panel) to open Settings
-
-### Add OpenAI
-
-1. Click **+ Add Provider**
-2. Select **OpenAI** from the provider type dropdown
-3. The name and endpoint will auto-fill
-4. Paste your **API key** (get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys))
-5. Choose a model:
-   - **gpt-4o-mini** (default) — fast and affordable
-   - **gpt-4o** — higher quality, costs more
-6. Click **Test Connection** to verify it works
-7. Click **Save**
-
-### Add Anthropic Claude (Alternative)
-
-1. Click **+ Add Provider**
-2. Select **Claude**
-3. Paste your API key from [console.anthropic.com](https://console.anthropic.com/)
-4. Choose a model:
-   - **claude-sonnet-4** (default)
-   - **claude-haiku-3.5** — faster, cheaper
-5. Test and save
-
-### Add Google Gemini (Alternative)
-
-1. Click **+ Add Provider**
-2. Select **Gemini**
-3. Paste your API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-4. Choose a model:
-   - **gemini-2.0-flash** (default) — fast
-   - **gemini-2.5-pro** — higher quality
-5. Test and save
-
-> You can add **multiple providers**. Slop will use them in priority order — drag to reorder. If one fails, it falls back to the next.
+> **Tip:** Pin the extension by clicking the puzzle icon in Chrome's toolbar, then
+> the pin next to "LANA AI."
 
 ---
 
-## Step 3: Start Using Slop
+## Step 2: First Run — Heads-up & Consent
 
-### Automatic Capture
+Open the side panel (click the **LANA AI** toolbar icon). On first run you'll see:
 
-Visit any supported site — **ChatGPT**, **Claude**, **Gemini**, or **Copilot** — and have a conversation. Slop captures messages automatically in the background.
+1. A short **heads-up** screen explaining what's captured (and that it stays on
+   your device until you authorize sync), that you stay in control, and that
+   clipped content is treated as data, not instructions.
+2. A prompt to **Authorize LANA GPT**.
 
-### Smart Sidebar
+---
 
-While chatting, a small floating icon appears on the page. Click it to open the **context sidebar**, which shows relevant knowledge from your past conversations. Click any item to inject it directly into your current chat.
+## Step 3: Connect Your Account (recommended)
+
+Click **Authorize LANA GPT**. A LANA tab opens; sign in if needed and approve
+access. The panel updates automatically when authorization completes.
+
+- You don't enter an instance URL — dev builds target a local instance, production
+  builds target the hosted cloud, automatically.
+- **Prefer to stay local?** You can skip this and use capture, on-device search,
+  and organization entirely on-device. Authorize later from **Settings** anytime.
+
+### Advanced: bring-your-own AI providers
+
+If your plan enables it, you can add OpenAI / Anthropic / Gemini keys for local
+summarization under **Settings → Advanced**. Keys are stored locally and call the
+provider directly. LANA tries enabled providers in priority order with fallback.
+
+---
+
+## Step 4: Start Using LANA AI
+
+### Capture
+Visit any supported site — **ChatGPT**, **Claude**, **Gemini**, or **Copilot** —
+and work normally. LANA captures in the background. Clips and imports land in the
+**Captured** inbox.
+
+### Ground to a matter
+Open **Captured**, and **Attach to matter** on a chat or clip (agent-suggested or
+your pick). In the composer: `@` references a matter, `#` a file/clip, `/` a playbook.
+
+### Run a playbook
+Type `/` in the composer and pick a playbook (e.g. `/summarize-matter`), or create
+one from the **Playbooks** view.
 
 ### Import Past Conversations
-
-Already have conversation history? Import it:
-
-1. Open the Slop side panel
-2. Go to the **Import** tab
-3. Drag and drop your export file:
-   - **ChatGPT**: Settings > Data Controls > Export Data (ZIP file)
-   - **Claude**: Settings > Export Data (ZIP file)
-   - **Gemini**: Google Takeout > Gemini Apps (ZIP file)
+1. Open the side panel → **Advanced → Import** (or the Import tab).
+2. Drag and drop your export file:
+   - **ChatGPT**: Settings → Data Controls → Export Data (ZIP)
+   - **Claude**: Settings → Export Data (ZIP)
+   - **Gemini**: Google Takeout → Gemini Apps (ZIP)
    - **Copilot**: Export as CSV or JSON
-
-### Summarize
-
-After importing or capturing conversations:
-
-1. Go to the **Dashboard** tab
-2. Click **Summarize Pending** to batch-process all unsummarized conversations
-3. Slop extracts key insights, decisions, code snippets, and organizes everything by topic
-
-### Search & Browse
-
-- **Topics** tab: Browse your knowledge organized by theme
-- **Conversations** tab: Search and filter all captured conversations
-- **Search**: Find anything across your entire knowledge library
 
 ---
 
@@ -106,24 +82,32 @@ After importing or capturing conversations:
 
 | Issue | Fix |
 |-------|-----|
-| Side panel doesn't open | Click the Slop icon in the toolbar. If missing, check `chrome://extensions` and make sure it's enabled. |
-| "No provider configured" | Go to Settings and add at least one AI provider with a valid API key. |
-| Test connection fails | Double-check your API key. Make sure you have billing set up on your provider account. |
-| Conversations not capturing | Refresh the page. Check that the site is supported (ChatGPT, Claude, Gemini, or Copilot). |
-| Extension stopped working after Chrome update | Go to `chrome://extensions`, disable then re-enable Slop. |
+| Side panel doesn't open | Click the LANA AI icon in the toolbar. If missing, check `chrome://extensions` and make sure it's enabled. |
+| "Authorize" hangs on the spinner | Make sure the LANA tab finished loading and you approved access. Use **Reopen it**, or **Skip for now** and authorize later from Settings. |
+| Matters don't appear | Authorize LANA GPT first (Settings). Matters load from your account. |
+| Conversations not capturing | Refresh the page. Check the site is supported (ChatGPT, Claude, Gemini, Copilot). |
+| Extension stopped after a Chrome update | Go to `chrome://extensions`, disable then re-enable LANA AI. |
 
 ---
 
 ## Privacy & Security
 
-- **100% local storage** — all conversations, summaries, and API keys stay on your device
-- **No accounts or sign-ups** required
-- **No telemetry** — Slop sends nothing to our servers
-- **API calls go directly** from your browser to your configured AI provider
-- Your API key is stored in Chrome's local storage and never leaves your machine
+- **Local-first storage** — captured conversations, summaries, and the search index
+  stay on your device.
+- **Opt-in account sync** — nothing reaches your LANA account until you authorize
+  it (OAuth 2.0 + PKCE).
+- **Minimized on send** — content filed to a matter is redacted on-device before it
+  leaves; agent observations are PII-redacted server-side before the model.
+- **You approve consequential actions** — the agent drafts but never sends/submits
+  without your explicit per-action approval.
+- **No third-party tracking** — no ad networks or analytics SDKs; LANA talks only to
+  your own LANA instance, after you authorize it.
+- BYO API keys are stored locally and never leave your machine except to call your
+  chosen provider.
 
 ---
 
 ## Getting Help
 
-If you run into issues or have feedback, reach out to the team directly via the email this was shared from.
+If you run into issues or have feedback, reach out to the team directly via the
+email this was shared from.

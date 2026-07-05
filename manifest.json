@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApi90xSvZi+5frHcPr3RB8ypHOaB7aGgFruLgfv/yhHD7ox9xmBnm6g4Fq+jJzVFqeNpnWYiJa9x0tHptnd6zojM7JaJdkAhnYU8t2N/yDv9uYj804FH7GCR6pB0f0MjHwP6DzYRWDO+ckBi5wcCHrzmkcqVGolDWO1yMgLKds1avguHI0OsFBq1urBvZ45eC0s7nbTTuGN6UmzMwpMGiXK1ba+ujyWWvTIoPzuFZppH+d2rRed42wG6jqHyUZlDX7HYUgpOMfqiGj4H9uYc6/HG1FjRUgutx6BsdeO8X54NHecsm52BolEfgrqdddKpUQwDzyWgSZaxj21sjWSldKwIDAQAB",
   "name": "LANA AI",
   "version": "1.0.0",
   "description": "Capture, synthesize, and inject context from your ChatGPT, Claude, Gemini & Copilot sessions — and send it into your LANA AI account.",
