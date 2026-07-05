@@ -16,6 +16,8 @@
 
 import { getEnv, defaultInstance } from '../lib/env.js';
 import { dbGetAll, dbCount } from '../lib/db.js';
+import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.js';
+import { connectViaDesktop } from '../lib/native-bridge.js';
 import {
   mountConnect, getState, getInstanceInfo,
   connectViaOAuth, disconnect,
@@ -519,7 +521,36 @@ async function renderSettings() {
     const prefs = lanaAgentPrefs || { memory: true, suggest: true, notify: false };
     $$('[data-ltoggle]').forEach((t) => t.classList.toggle('on', !!prefs[t.dataset.ltoggle]));
   } catch { /* defaults already in markup */ }
+
+  await renderAccounts();
 }
+
+/** Render the linked-accounts list (multi-account roaming) in Settings. */
+async function renderAccounts() {
+  const el = $('#l-accounts-list');
+  if (!el) return;
+  let accounts = [];
+  try { accounts = await listAccounts(); } catch { accounts = []; }
+  if (!accounts.length) {
+    el.innerHTML = `<div class="l-emptynote" style="padding:14px 4px">No accounts linked yet.</div>`;
+    return;
+  }
+  el.innerHTML = accounts.map((a) => `
+    <div class="l-srow" style="align-items:center">
+      <div style="min-width:0">
+        <div class="st" style="display:flex;align-items:center;gap:7px">${esc(a.label)}${a.isActive ? '<span class="l-badge sov">Active</span>' : ''}</div>
+        <div class="sd">${esc(hostOf(a.instanceUrl))}${a.email ? ' · ' + esc(a.email) : ''}</div>
+      </div>
+      <div class="l-row" style="flex:0 0 auto">
+        ${a.isActive ? '' : `<button class="l-btn l-btn-ghost" data-acct-use="${esc(a.id)}">Use</button>`}
+        <button class="l-btn l-btn-danger" data-acct-remove="${esc(a.id)}" title="Unlink">✕</button>
+      </div>
+    </div>`).join('');
+  $$('[data-acct-use]', el).forEach((b) => b.addEventListener('click', async () => { await setActiveAccount(b.dataset.acctUse); renderAccounts(); }));
+  $$('[data-acct-remove]', el).forEach((b) => b.addEventListener('click', async () => { await removeAccount(b.dataset.acctRemove); renderAccounts(); }));
+}
+
+function hostOf(url) { try { return new URL(url).host; } catch { return url; } }
 
 function wireSettings() {
   $('#l-set-authorize')?.addEventListener('click', () => {
@@ -540,6 +571,14 @@ function wireSettings() {
   $('#l-set-export')?.addEventListener('click', () => { const b = document.getElementById('backup-btn'); if (b) b.click(); else openLegacy('settings'); });
   $('#l-set-import')?.addEventListener('click', () => { const b = document.getElementById('restore-btn'); if (b) b.click(); else openLegacy('settings'); });
   $('#l-set-advanced')?.addEventListener('click', () => openLegacy('settings'));
+  $('#l-connect-desktop')?.addEventListener('click', () => {
+    const st = $('#l-accounts-status');
+    const say = (msg, err) => { if (st) { st.hidden = false; st.textContent = msg; st.style.color = err ? 'var(--l-danger)' : 'var(--l-dim)'; } };
+    say('Requesting a token from the LANA desktop app…', false);
+    connectViaDesktop()
+      .then(({ account }) => { say(`Linked ${account.email || hostOf(account.instanceUrl)}.`, false); resetMattersCache(); renderAccounts(); })
+      .catch((err) => say(`${err.message} You can also use “Authorize LANA GPT” above.`, true));
+  });
 }
 
 function flashStatus(msg, isError) {

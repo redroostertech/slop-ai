@@ -81,4 +81,13 @@ await t('removeAccount unlinks + reassigns active', async () => {
   assert.equal((await A.getActiveAccount()).accessToken, 'at1b'); // fell back to remaining
 });
 
+await t('linkAccount rejects a non-https instanceUrl (no token to attacker origin)', async () => {
+  await assert.rejects(A.linkAccount({ instanceUrl: 'http://evil.tld', accessToken: 'x' }), /https/);
+  await assert.rejects(A.linkAccount({ instanceUrl: 'not a url', accessToken: 'x' }), /./);
+});
+
+await t('linkAccount rejects a non-string accessToken', async () => {
+  await assert.rejects(A.linkAccount({ instanceUrl: 'https://ok.example', accessToken: { evil: 1 } }), /accessToken/);
+});
+
 console.log(`\naccounts.js: ${passed}/${passed} passed`);
