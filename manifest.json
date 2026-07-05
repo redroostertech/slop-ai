@@ -10,8 +10,7 @@
     "activeTab",
     "scripting",
     "offscreen",
-    "identity",
-    "nativeMessaging"
+    "identity"
   ],
   "host_permissions": [
     "https://api.openai.com/*",
@@ -21,7 +20,8 @@
     "https://chatgpt.com/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
-    "https://copilot.microsoft.com/*"
+    "https://copilot.microsoft.com/*",
+    "http://127.0.0.1/*"
   ],
   "optional_host_permissions": [
     "http://*/*",
