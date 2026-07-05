@@ -648,10 +648,35 @@ function wireFirstRun() {
     $('#l-fr-2').hidden = false;
     connectViaOAuth(instanceUrlValue)
       .then((state) => { authState = state || { authenticated: false }; resetMattersCache(); resetAgent(); })
-      .catch(() => { /* stay on waiting screen; user can Skip */ });
+      .catch((err) => showFirstRunError(err));
   });
   $('#l-fr-skip')?.addEventListener('click', () => resetAgent());
-  $('#l-fr-reopen')?.addEventListener('click', (e) => { e.preventDefault(); connectViaOAuth(instanceUrlValue).then((s) => { authState = s || authState; resetMattersCache(); resetAgent(); }).catch(() => {}); });
+  $('#l-fr-reopen')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    resetFirstRunWaiting();
+    connectViaOAuth(instanceUrlValue).then((s) => { authState = s || authState; resetMattersCache(); resetAgent(); }).catch((err) => showFirstRunError(err));
+  });
+}
+
+/** Surface an authorize failure ON the waiting screen instead of hanging. */
+function showFirstRunError(err) {
+  const w = $('#l-fr-2 .l-waiting');
+  if (!w) return;
+  const msg = (err && err.message) ? err.message : 'Authorization failed.';
+  const hint = /could not be loaded|failed to fetch|reach/i.test(msg)
+    ? ` The LANA instance (${instanceUrlValue || 'not set'}) isn’t reachable — check it’s running / correct.`
+    : '';
+  w.style.color = 'var(--l-danger)';
+  w.style.borderColor = 'rgba(229,72,77,0.35)';
+  w.innerHTML = `${esc(msg)}${esc(hint)}`;
+}
+
+function resetFirstRunWaiting() {
+  const w = $('#l-fr-2 .l-waiting');
+  if (!w) return;
+  w.style.color = '';
+  w.style.borderColor = '';
+  w.innerHTML = '<span class="l-spin"></span>Waiting for authorization…';
 }
 
 /* ============================ Captured segbar / search ================ */
