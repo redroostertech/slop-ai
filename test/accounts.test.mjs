@@ -90,4 +90,15 @@ await t('linkAccount rejects a non-string accessToken', async () => {
   await assert.rejects(A.linkAccount({ instanceUrl: 'https://ok.example', accessToken: { evil: 1 } }), /accessToken/);
 });
 
+await t('updateTokens does not wipe the refresh token on null/absent', async () => {
+  const { id } = await A.linkAccount({ instanceUrl: 'https://keep.example', accessToken: 'x', refreshToken: 'KEEP' });
+  await A.setActiveAccount(id);
+  await A.updateTokens(id, { accessToken: 'x2', refreshToken: null });
+  assert.equal((await A.getActiveAccount()).refreshToken, 'KEEP');
+  await A.updateTokens(id, { accessToken: 'x3' }); // absent → keep
+  assert.equal((await A.getActiveAccount()).refreshToken, 'KEEP');
+  await A.updateTokens(id, { accessToken: 'x4', refreshToken: 'NEW' }); // real rotation → update
+  assert.equal((await A.getActiveAccount()).refreshToken, 'NEW');
+});
+
 console.log(`\naccounts.js: ${passed}/${passed} passed`);

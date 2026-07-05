@@ -70,4 +70,20 @@ await t('a dead refresh (invalid_grant) surfaces the 401 without throwing', asyn
   assert.equal(resp.status, 401); // retry not attempted (refresh dead)
 });
 
+await t('concurrent 401s trigger a SINGLE refresh (single-flight, no replay)', async () => {
+  await A.updateTokens((await A.getActiveAccount()).id, { accessToken: 'AT3', refreshToken: 'RT3', expiresIn: 3600 });
+  let tokenPosts = 0;
+  fetchImpl = async (url, init) => {
+    if (url.endsWith('/matters')) {
+      const auth = new Headers(init.headers).get('Authorization');
+      return auth === 'Bearer AT4' ? { status: 200, ok: true } : { status: 401, ok: false };
+    }
+    if (url.endsWith('/oauth/token')) { tokenPosts += 1; await new Promise((r) => setTimeout(r, 10)); return { status: 200, ok: true, json: async () => ({ access_token: 'AT4', refresh_token: 'RT4', expires_in: 3600 }) }; }
+    throw new Error('unexpected ' + url);
+  };
+  const results = await Promise.all([Auth.authorizedFetch('matters'), Auth.authorizedFetch('matters'), Auth.authorizedFetch('matters')]);
+  assert.deepEqual(results.map((r) => r.status), [200, 200, 200]);
+  assert.equal(tokenPosts, 1); // ONE refresh for 3 concurrent 401s — no consumed-token replay
+});
+
 console.log(`\nlana-auth multi-account: ${passed}/${passed} passed`);
