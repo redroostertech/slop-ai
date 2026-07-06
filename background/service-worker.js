@@ -24,6 +24,42 @@ console.log('[LANA AI] Service worker loaded successfully');
 // Open side panel on toolbar click
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
+// "Notify when done" click-to-focus. Registered in the SW so it survives when the
+// side panel is closed (exactly when a completion notification is most likely
+// clicked). `chrome.notifications` only exists once the optional permission is
+// granted, so guard + also (re)register when it's granted at runtime.
+// Track the focused window so a notification click can open the side panel WITHOUT
+// an await first — sidePanel.open() must be called while the click's user gesture
+// is still live, and any awaited round-trip before it spends the gesture.
+let lastFocusedWindowId = -1; // chrome.windows.WINDOW_ID_NONE
+chrome.windows?.onFocusChanged?.addListener((wid) => { if (wid !== -1) lastFocusedWindowId = wid; });
+
+async function onNotificationClicked(notifId) {
+  const wid = lastFocusedWindowId;
+  if (wid !== -1) {
+    // Open FIRST (no preceding await → gesture still live), then focus.
+    try { chrome.sidePanel.open({ windowId: wid }); } catch { /* gesture/availability */ }
+    chrome.windows.update(wid, { focused: true }).catch(() => {});
+  } else {
+    // Cold-start fallback: we never observed a focused window (SW just woke). The
+    // gesture is likely gone after this await, but attempt it anyway.
+    try {
+      const win = await chrome.windows.getLastFocused();
+      if (win) { chrome.sidePanel.open({ windowId: win.id }).catch(() => {}); chrome.windows.update(win.id, { focused: true }).catch(() => {}); }
+    } catch { /* best-effort */ }
+  }
+  try { chrome.notifications.clear(notifId); } catch { /* ignore */ }
+}
+function registerNotificationClick() {
+  if (chrome.notifications?.onClicked && !chrome.notifications.onClicked.hasListener(onNotificationClicked)) {
+    chrome.notifications.onClicked.addListener(onNotificationClicked);
+  }
+}
+registerNotificationClick();
+chrome.permissions?.onAdded?.addListener?.((p) => {
+  if (p?.permissions?.includes('notifications')) registerNotificationClick();
+});
+
 // Warm the WebLLM offscreen document up front (best-effort). No-ops if the
 // "offscreen" permission or the vendored runtime is missing; the router also
 // creates it lazily on first use.

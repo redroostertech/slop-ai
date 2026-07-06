@@ -18,6 +18,8 @@ import { getEnv, defaultInstance } from '../lib/env.js';
 import { dbGetAll, dbCount } from '../lib/db.js';
 import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.js';
 import { connectViaDesktop } from '../lib/native-bridge.js';
+import { notifyDone, requestNotifPermission } from '../lib/notify.js';
+import { rankPlaybooks } from '../lib/playbook-rank.js';
 import {
   mountConnect, getState, getInstanceInfo,
   connectViaOAuth, disconnect,
@@ -35,6 +37,8 @@ const MAX_COMPOSER = 8000; // cap composer length (pasted content included)
 let instanceUrlValue = '';
 /** Cached auth state. */
 let authState = { authenticated: false };
+/** Cached agent prefs { memory, suggest, notify } — loaded at boot, kept fresh on toggle. */
+let agentPrefs = { memory: true, suggest: true, notify: false };
 
 /* ============================ view router ============================== */
 
@@ -49,6 +53,7 @@ function showView(name) {
   if (name === 'captured') renderCaptured();
   if (name === 'history') renderHistory();
   if (name === 'playbooks') renderPlaybooks();
+  if (name === HOME) renderSuggestStrip();
 }
 
 function wireRouter() {
@@ -335,11 +340,11 @@ async function getMatters() {
 }
 
 const DEFAULT_PLAYBOOKS = [
-  { cmd: 'summarize-matter', desc: 'Key facts, deadlines…', src: 'Matter' },
-  { cmd: 'draft-demand-letter', desc: 'Draft & save to matter', src: 'Docs' },
-  { cmd: 'intake-client', desc: 'From email → new matter', src: 'Gmail' },
-  { cmd: 'research-authority', desc: 'Statutes + case law', src: 'Corpus' },
-  { cmd: 'digest-inbox', desc: 'Flag matter emails', src: 'Gmail' },
+  { cmd: 'summarize-matter', desc: 'Key facts, deadlines…', src: 'Matter', tags: ['summarize', 'summary', 'recap', 'matter'] },
+  { cmd: 'draft-demand-letter', desc: 'Draft & save to matter', src: 'Docs', tags: ['draft', 'demand', 'letter', 'write'] },
+  { cmd: 'intake-client', desc: 'From email → new matter', src: 'Gmail', tags: ['intake', 'client', 'new', 'email'], sites: ['mail.google.com'] },
+  { cmd: 'research-authority', desc: 'Statutes + case law', src: 'Corpus', tags: ['research', 'statute', 'case', 'law', 'authority'] },
+  { cmd: 'digest-inbox', desc: 'Flag matter emails', src: 'Gmail', tags: ['digest', 'inbox', 'email', 'flag'], sites: ['mail.google.com'] },
 ];
 async function getPlaybooks() {
   try {
@@ -347,6 +352,39 @@ async function getPlaybooks() {
     if (Array.isArray(lanaPlaybooks) && lanaPlaybooks.length) return lanaPlaybooks;
   } catch { /* fall through */ }
   return DEFAULT_PLAYBOOKS;
+}
+
+/** Signals for ranking playbook suggestions. Best-effort; every source guarded. */
+async function getSuggestContext() {
+  const ctx = { host: '', captureCount: 0, hasMatters: false, composerText: '' };
+  try { ctx.composerText = ($('#l-cinput')?.textContent || '').toLowerCase(); } catch { /* n/a */ }
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const u = tabs && tabs[0] && tabs[0].url; // url present only for permitted hosts
+    if (u) ctx.host = new URL(u).host;
+  } catch { /* activeTab/host not granted → best-effort */ }
+  try { ctx.captureCount = (await getCapturedItems()).length; } catch { /* n/a */ }
+  try { ctx.hasMatters = (await getMatters()).length > 0; } catch { /* n/a */ }
+  return ctx;
+}
+
+/** Render the "Suggested" playbook strip on the Agent home (gated by the toggle). */
+async function renderSuggestStrip() {
+  const strip = $('#l-suggest-strip');
+  if (!strip) return;
+  if (!agentPrefs.suggest) { strip.hidden = true; strip.innerHTML = ''; return; } // OFF → only the static chips
+  const ranked = rankPlaybooks(await getPlaybooks(), await getSuggestContext()).slice(0, 3);
+  if (!ranked.length) { strip.hidden = true; strip.innerHTML = ''; return; }
+  strip.hidden = false;
+  strip.innerHTML = `<div class="l-eyebrow2" style="margin:0 0 8px">Suggested for you</div>` +
+    ranked.map((p) => `<button class="l-suggest" data-sug="/${esc(p.cmd)}" style="border:1px solid var(--l-accent-line);cursor:pointer;margin:0 6px 8px 0"><span class="pre" style="color:var(--l-accent-hi);font-family:var(--l-mono)">/</span>${esc(p.cmd)}</button>`).join('');
+  $$('[data-sug]', strip).forEach((b) => b.addEventListener('click', () => {
+    const inp = $('#l-cinput');
+    inp.textContent = b.dataset.sug + ' ';
+    inp.focus();
+    placeCaretEnd(inp);
+    updateSendEnabled();
+  }));
 }
 
 /* ============================ Captured view ============================ */
@@ -438,6 +476,7 @@ async function fileToMatter(cid, matterId, anchor) {
     const name = (matters.find((m) => String(m.id) === String(matterId)) || {}).name || 'matter';
     card.querySelector('.l-actions').innerHTML =
       `<span class="l-filed"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 12 2 2 4-4"/></svg>Filed to <span class="l-mtag">@${esc(name)}</span></span>`;
+    notifyDone({ id: 'lana-filed', title: 'Filed to LANA', message: `“${it.title}” saved to @${name}` });
   } catch (err) {
     anchor.textContent = 'Attach to matter ▾';
     anchor.disabled = false;
@@ -564,9 +603,23 @@ function wireSettings() {
   });
   $$('[data-ltoggle]').forEach((t) => t.addEventListener('click', async () => {
     t.classList.toggle('on');
+    // Turning Notify ON needs the notifications permission — request it on this
+    // gesture; if declined, revert the toggle so we never claim it's on.
+    if (t.dataset.ltoggle === 'notify' && t.classList.contains('on')) {
+      const granted = await requestNotifPermission();
+      if (!granted) t.classList.remove('on');
+    }
     const prefs = {};
     $$('[data-ltoggle]').forEach((x) => { prefs[x.dataset.ltoggle] = x.classList.contains('on'); });
-    try { await chrome.storage.local.set({ lanaAgentPrefs: prefs }); } catch { /* ignore */ }
+    try {
+      await chrome.storage.local.set({ lanaAgentPrefs: prefs });
+      agentPrefs = prefs; // cache only what actually persisted (notifyDone reads storage)
+    } catch {
+      t.classList.toggle('on'); // revert so the UI matches the unchanged stored state
+      flashStatus('Couldn’t save that setting — try again.', true);
+      return;
+    }
+    if (t.dataset.ltoggle === 'suggest' && currentView === HOME) renderSuggestStrip();
   }));
   $('#l-set-export')?.addEventListener('click', () => { const b = document.getElementById('backup-btn'); if (b) b.click(); else openLegacy('settings'); });
   $('#l-set-import')?.addEventListener('click', () => { const b = document.getElementById('restore-btn'); if (b) b.click(); else openLegacy('settings'); });
@@ -716,6 +769,7 @@ async function boot() {
     } });
   } catch { /* SW not ready */ }
   try { authState = (await getState()) || { authenticated: false }; } catch { authState = { authenticated: false }; }
+  try { const { lanaAgentPrefs } = await chrome.storage.local.get('lanaAgentPrefs'); if (lanaAgentPrefs) agentPrefs = { ...agentPrefs, ...lanaAgentPrefs }; } catch { /* defaults */ }
 
   wireRouter();
   wireAgent();

@@ -10,6 +10,7 @@ import { getKnowledgeHealth, getTrending, getStale, getUsageBySource } from '../
 import { trackView, trackExport } from '../lib/tracker.js';
 import { getProviders, saveProviders, hasEnabledProvider, testProvider, PROVIDER_DEFAULTS } from '../lib/ai-router.js';
 import { initEmbeddings, isModelLoaded, isModelLoading, embed, destroyEmbeddings } from '../lib/embeddings.js';
+import { notifyDone } from '../lib/notify.js';
 import { mountConnect, selectInstance, connectViaOAuth, connectViaCookie, connectViaLogin, disconnect } from './lana-connect.js';
 import { INSTANCE_PRESETS } from '../lib/instance.js';
 
@@ -146,6 +147,7 @@ const ActivityDrawer = (() => {
       cancelBtn.hidden = true;
       barFill.style.width = '100%';
       autoDismiss(5000);
+      notifyDone({ id: 'lana-summarize', title: 'Summarization complete', message: `${done} summarized${failed > 0 ? `, ${failed} failed` : ''}.` });
     },
 
     stoppedBatch(done, total) {
@@ -770,6 +772,7 @@ async function handleFiles(fileList) {
   if (projectGroupCount > 0) msg += ` Found ${projectGroupCount} project group${projectGroupCount > 1 ? 's' : ''} — rename them in Topics.`;
   if (claudeProjectCount > 0) msg += ` Created ${claudeProjectCount} Claude project topic${claudeProjectCount > 1 ? 's' : ''}.`;
   resultsText.textContent = msg;
+  notifyDone({ id: 'lana-import', title: 'Import complete', message: `Imported ${formatNumber(totalImported)} conversations.` });
 }
 
 // ===== Conversations =====
