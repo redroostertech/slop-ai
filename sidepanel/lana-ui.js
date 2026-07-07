@@ -325,10 +325,15 @@ let _mattersCache = null;
 /** Drop the cached matter list so the next getMatters() refetches. Call on any
  *  auth transition — otherwise the first (unauth) empty result sticks forever. */
 function resetMattersCache() { _mattersCache = null; }
+let _lastMattersError = null;
 async function getMatters() {
   if (_mattersCache) return _mattersCache;
   try {
     const r = await chrome.runtime.sendMessage({ type: 'LANA_LIST_MATTERS' });
+    // The SW wraps a failed fetch as { error }. Surface it instead of silently
+    // showing an empty picker (so "I have a matter but see none" is diagnosable).
+    if (r && r.error) { _lastMattersError = r.error; return []; }
+    _lastMattersError = null;
     const matters = (r && r.matters) || [];
     const mapped = matters.map((m) => ({
       id: m.id || m.matter_id || m.matterId,
@@ -339,7 +344,7 @@ async function getMatters() {
     // must not become permanent — re-query until matters actually arrive.
     if (mapped.length) _mattersCache = mapped;
     return mapped;
-  } catch { return []; }
+  } catch (e) { _lastMattersError = e?.message || 'request failed'; return []; }
 }
 
 const DEFAULT_PLAYBOOKS = [
@@ -410,7 +415,12 @@ async function renderCaptured() {
     return;
   }
   const matters = await getMatters();
-  list.innerHTML = filtered.map((it) => `
+  list.innerHTML = filtered.map((it) => {
+    const clipText = it.kind === 'clip' ? String(it._c?.text || it._c?.selection || '').trim() : '';
+    const excerpt = clipText
+      ? `<div class="l-iexcerpt" data-view="${esc(it.id)}" role="button" tabindex="0" title="View the full clip">${esc(clipText.slice(0, 220))}${clipText.length > 220 ? '…' : ''}</div>`
+      : '';
+    return `
     <div class="l-item" data-cid="${esc(it.id)}">
       <div class="l-itop">
         <span class="l-sico ${it.platform.cls}">${esc(it.platform.glyph)}</span>
@@ -420,16 +430,23 @@ async function renderCaptured() {
             : esc(it.title)
         }<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
       </div>
+      ${excerpt}
       <div class="l-actions">
         <button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete from Captured"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>
         <span class="l-sp"></span>
         <button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button>
         <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
   $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
   $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => deleteCaptured(b.dataset.del)));
+  $$('[data-view]', list).forEach((el) => {
+    const view = () => viewClip(el.dataset.view);
+    el.addEventListener('click', view);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); view(); } });
+  });
   $$('[data-open]', list).forEach((el) => {
     // Re-validate the scheme at click time too — never open a non-http(s) URL.
     const open = () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); };
@@ -456,6 +473,12 @@ async function deleteCaptured(id) {
   } catch (err) {
     window.alert(`Couldn't delete: ${err.message}`);
   }
+}
+
+/** Open the full clipped text (reuses the clip review sheet, which shows + files it). */
+async function viewClip(id) {
+  const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
+  if (it && it._c) openClipReview(it._c);
 }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */
@@ -532,7 +555,9 @@ async function openMatterPicker(anchor, cid) {
   menu.style.cssText = 'position:fixed;z-index:60;max-width:280px';
   menu.innerHTML = matters.length
     ? `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('')
-    : `<div class="l-mhint">No matters in this account</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">Create a matter in LANA GPT — it’ll show up here to file into.</span></div>`;
+    : _lastMattersError
+      ? `<div class="l-mhint">Couldn’t load matters</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">${esc(_lastMattersError)}</span></div>`
+      : `<div class="l-mhint">No matters in this account</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">Create a matter in LANA GPT — it’ll show up here to file into.</span></div>`;
   // Append INSIDE the shell — the shell has a very high z-index, so a body-level
   // popover (z-index:60) would render hidden behind it. position:fixed keeps it
   // viewport-anchored regardless of parent.
