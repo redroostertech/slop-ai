@@ -6,7 +6,10 @@ import { dbGet, dbGetAll } from '../lib/db.js';
 // LANA AI account + hybrid inference cascade.
 import { getInstance, setInstance, normalizeInstanceUrl } from '../lib/instance.js';
 import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState, authorizeOAuth, getEntitlements } from '../lib/lana-auth.js';
-import { listMatters, sendKnowledge, sendMemory, sendDocument } from '../lib/lana-client.js';
+import {
+  listMatters, sendKnowledge, sendMemory, sendDocument,
+  getMemoryPreference, setMemoryPreference,
+} from '../lib/lana-client.js';
 import { route as routeTask } from '../lib/router.js';
 // Capability modules.
 import { synthesizeHandoff } from '../lib/capabilities/handoff.js';
@@ -76,7 +79,8 @@ ensureOffscreen().catch((err) =>
 const EXTENSION_ONLY_MESSAGES = new Set([
   'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_AUTHORIZE',
   'LANA_LOGIN', 'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
-  'LANA_SEND_MEMORY', 'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF',
+  'LANA_SEND_MEMORY', 'LANA_GET_MEMORY_PREF', 'LANA_SET_MEMORY_PREF',
+  'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF',
   'LANA_IMPORT', 'LANA_SURFACE', 'LANA_PROPOSE_FILLS',
 ]);
 
@@ -288,6 +292,12 @@ async function handleMessage(message, sender) {
 
     case 'LANA_SEND_MEMORY':
       return await sendMemory({ fact: message.fact, matterId: message.matterId });
+
+    case 'LANA_GET_MEMORY_PREF':
+      return await getMemoryPreference();
+
+    case 'LANA_SET_MEMORY_PREF':
+      return await setMemoryPreference(message.enabled);
 
     case 'LANA_SEND_DOCUMENT':
       return await sendDocument({

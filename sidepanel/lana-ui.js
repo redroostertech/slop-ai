@@ -415,10 +415,66 @@ async function renderCaptured() {
       </div>
       <div class="l-actions">
         <span class="l-sp"></span>
+        <button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button>
         <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}" ${matters.length ? '' : 'disabled title="Authorize LANA GPT to file to a matter"'}>Attach to matter ▾</button>
       </div>
     </div>`).join('');
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
+  $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
+}
+
+/** Live Memory gate — prefer fresh storage, fall back to the module cache. */
+async function memoryEnabled() {
+  try {
+    const { lanaAgentPrefs } = await chrome.storage.local.get('lanaAgentPrefs');
+    if (lanaAgentPrefs && typeof lanaAgentPrefs.memory === 'boolean') return lanaAgentPrefs.memory;
+  } catch { /* fall back to the cache */ }
+  return agentPrefs.memory !== false;
+}
+
+/** Resolve an `@matter` typed in the composer to its id (else null = user memory). */
+async function activeMatterId() {
+  try {
+    const m = ($('#l-cinput')?.textContent || '').match(/(?:^|\s)@([^\s]+)/);
+    if (!m) return null;
+    const name = m[1].toLowerCase();
+    const hit = (await getMatters()).find((x) => slug(x.name) === slug(name) || (x.name || '').toLowerCase() === name);
+    return hit ? hit.id : null;
+  } catch { return null; }
+}
+
+/**
+ * "Remember this" — write a short salient fact to account memory, gated by the
+ * Memory toggle. Binds to the active @matter when one is set, else user/global
+ * memory. The fact is sent via LANA_SEND_MEMORY (never logged); it's only ever
+ * placed in a text prompt / textContent, so there is no HTML interpolation.
+ */
+async function rememberItem(anchor, cid) {
+  if (!(await memoryEnabled())) {
+    flashStatus('Memory is off — turn it on in Settings to remember facts.', true);
+    return;
+  }
+  if (!authState.authenticated) {
+    flashStatus('Authorize LANA GPT in Settings to remember facts.', true);
+    return;
+  }
+  const it = (await getCapturedItems()).find((x) => String(x.id) === String(cid));
+  const fact = (window.prompt('Remember this fact:', it ? it.title : '') || '').trim();
+  if (!fact) return;
+  const matterId = await activeMatterId();
+  const label = anchor.textContent;
+  anchor.textContent = 'Remembering…';
+  anchor.disabled = true;
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'LANA_SEND_MEMORY', fact, matterId });
+    if (res && res.error) throw new Error(res.error);
+    anchor.textContent = 'Remembered ✓';
+    flashStatus(matterId ? 'Saved to matter memory.' : 'Saved to your memory.');
+  } catch (err) {
+    anchor.textContent = label;
+    anchor.disabled = false;
+    flashStatus(`Couldn’t remember: ${err.message}`, true);
+  }
 }
 
 async function openMatterPicker(anchor, cid) {
@@ -559,7 +615,25 @@ async function renderSettings() {
     const { lanaAgentPrefs } = await chrome.storage.local.get('lanaAgentPrefs');
     const prefs = lanaAgentPrefs || { memory: true, suggest: true, notify: false };
     $$('[data-ltoggle]').forEach((t) => t.classList.toggle('on', !!prefs[t.dataset.ltoggle]));
+    agentPrefs = { ...agentPrefs, ...prefs };
   } catch { /* defaults already in markup */ }
+
+  // Memory is a per-user SERVER preference when signed in. Reflect the server
+  // value (source of truth) over the local one and mirror it into storage so the
+  // client-side write gate stays correct offline. getMemoryPreference soft-
+  // defaults (404/offline → enabled:true) and the SW wraps errors as {error},
+  // so a failure here just leaves the local toggle as-is — never throws the view.
+  if (authed) {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'LANA_GET_MEMORY_PREF' });
+      if (res && !res.error && typeof res.enabled === 'boolean') {
+        const memToggle = $('[data-ltoggle="memory"]');
+        if (memToggle) memToggle.classList.toggle('on', res.enabled);
+        agentPrefs = { ...agentPrefs, memory: res.enabled };
+        try { await chrome.storage.local.set({ lanaAgentPrefs: { ...agentPrefs } }); } catch { /* best-effort mirror */ }
+      }
+    } catch { /* SW unreachable → keep the local toggle */ }
+  }
 
   await renderAccounts();
 }
@@ -620,6 +694,23 @@ function wireSettings() {
       return;
     }
     if (t.dataset.ltoggle === 'suggest' && currentView === HOME) renderSuggestStrip();
+
+    // Memory drives a per-user SERVER preference. Persist locally (above) as the
+    // offline gate, then push to the server when signed in. On failure, revert
+    // the toggle + re-persist so the local gate matches what the server holds.
+    if (t.dataset.ltoggle === 'memory' && authState.authenticated) {
+      const on = t.classList.contains('on');
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'LANA_SET_MEMORY_PREF', enabled: on });
+        if (res && res.error) throw new Error(res.error);
+      } catch (err) {
+        t.classList.toggle('on'); // revert the visual toggle
+        const reverted = {};
+        $$('[data-ltoggle]').forEach((x) => { reverted[x.dataset.ltoggle] = x.classList.contains('on'); });
+        try { await chrome.storage.local.set({ lanaAgentPrefs: reverted }); agentPrefs = reverted; } catch { /* keep going */ }
+        flashStatus(`Couldn’t sync Memory: ${err.message}`, true);
+      }
+    }
   }));
   $('#l-set-export')?.addEventListener('click', () => { const b = document.getElementById('backup-btn'); if (b) b.click(); else openLegacy('settings'); });
   $('#l-set-import')?.addEventListener('click', () => { const b = document.getElementById('restore-btn'); if (b) b.click(); else openLegacy('settings'); });
