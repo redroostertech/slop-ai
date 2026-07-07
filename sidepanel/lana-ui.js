@@ -15,7 +15,7 @@
  */
 
 import { getEnv, defaultInstance } from '../lib/env.js';
-import { dbGetAll, dbCount } from '../lib/db.js';
+import { dbGetAll, dbCount, dbDelete, dbGetByIndex } from '../lib/db.js';
 import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.js';
 import { connectViaDesktop } from '../lib/native-bridge.js';
 import { notifyDone, requestNotifPermission } from '../lib/notify.js';
@@ -421,6 +421,7 @@ async function renderCaptured() {
         }<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
       </div>
       <div class="l-actions">
+        <button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete from Captured"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>
         <span class="l-sp"></span>
         <button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button>
         <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>
@@ -428,12 +429,33 @@ async function renderCaptured() {
     </div>`).join('');
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
   $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
+  $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => deleteCaptured(b.dataset.del)));
   $$('[data-open]', list).forEach((el) => {
     // Re-validate the scheme at click time too — never open a non-http(s) URL.
     const open = () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); };
     el.addEventListener('click', open);
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   });
+}
+
+/** Delete a captured item (clip/chat/import) from the device, with a confirm. */
+async function deleteCaptured(id) {
+  const items = await getCapturedItems();
+  const it = items.find((x) => String(x.id) === String(id));
+  const label = it ? it.title : 'this item';
+  if (!window.confirm(`Delete “${label}” from Captured?\nThis removes it from this device.`)) return;
+  try {
+    await dbDelete('conversations', id);
+    // Clean up any summaries tied to this conversation (AI chats), like the legacy path.
+    try {
+      const sums = await dbGetByIndex('summaries', 'conversationId', id);
+      for (const s of sums) await dbDelete('summaries', s.id);
+    } catch { /* no summaries index or none for this item (e.g. a clip) */ }
+    chrome.runtime.sendMessage({ type: 'DATA_CHANGED' }).catch(() => {});
+    renderCaptured();
+  } catch (err) {
+    window.alert(`Couldn't delete: ${err.message}`);
+  }
 }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */
@@ -513,7 +535,10 @@ async function openMatterPicker(anchor, cid) {
   menu.className = 'l-menu';
   menu.style.cssText = 'position:fixed;z-index:60;max-width:280px';
   menu.innerHTML = `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('');
-  document.body.appendChild(menu);
+  // Append INSIDE the shell — the shell has a very high z-index, so a body-level
+  // popover (z-index:60) would render hidden behind it. position:fixed keeps it
+  // viewport-anchored regardless of parent.
+  shell.appendChild(menu);
   const r = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, r.right - 280)}px`;
   menu.style.top = `${r.bottom + 6}px`;
@@ -650,6 +675,9 @@ function closeClipReview() {
   currentClip = null;
   clipSelected.clear();
   clipMatters = [];
+  // Any close path (buttons, backdrop, Esc) refreshes the Captured list so a new
+  // clip shows immediately instead of only after navigating away and back.
+  if (currentView === 'captured') renderCaptured();
 }
 
 /**
@@ -820,7 +848,10 @@ function wireClipReview() {
   scrim?.addEventListener('click', (e) => { if (e.target === scrim) closeClipReview(); });
   // The context-menu handler nudges an already-open panel to pick up its clip.
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') consumePendingClipReview();
+    if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') {
+      if (currentView === 'captured') renderCaptured(); // reflect the new clip immediately
+      consumePendingClipReview();
+    }
   });
 }
 
