@@ -551,6 +551,8 @@ async function openHighlighted(url, texts) {
     const onUpd = (id, info) => { if (id === tab.id && info.status === 'complete') finish(); };
     const timer = setTimeout(finish, 8000); // don't hang if 'complete' never fires
     chrome.tabs.onUpdated.addListener(onUpd);
+    // A cached/fast page may have completed before the listener attached — check now.
+    chrome.tabs.get(tab.id).then((tt) => { if (tt && tt.status === 'complete') finish(); }).catch(() => {});
   });
   try {
     const res = await chrome.scripting.executeScript({
