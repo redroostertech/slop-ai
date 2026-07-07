@@ -92,13 +92,23 @@ function registerClipContextMenu() {
 
 async function onClipContextMenuClicked(info, tab) {
   if (info.menuItemId !== CLIP_MENU_ID) return;
-  const text = (info.selectionText || '').trim();
+  let text = (info.selectionText || '').trim();
   if (!text) return;
   // Open the side panel FIRST while the context-menu click gesture is still live
   // (sidePanel.open requires a user gesture; awaiting IndexedDB before it would
   // spend the gesture and the panel wouldn't open).
   if (tab && typeof tab.windowId === 'number') {
     try { chrome.sidePanel.open({ windowId: tab.windowId }); } catch { /* gesture/availability */ }
+  }
+  // info.selectionText is Chrome-truncated (~1000 chars) — bad for clipping a full
+  // research passage. Re-read the live selection via scripting (the context-menu
+  // click grants activeTab for this tab); fall back to the truncated text.
+  if (tab && typeof tab.id === 'number') {
+    try {
+      const full = await selectionActiveTab(tab.id);
+      const sel = full && typeof full.selection === 'string' ? full.selection.trim() : '';
+      if (sel.length > text.length) text = sel;
+    } catch { /* keep info.selectionText */ }
   }
   const clip = {
     title: (tab && tab.title) || '',
