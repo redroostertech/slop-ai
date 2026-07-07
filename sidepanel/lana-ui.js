@@ -20,6 +20,7 @@ import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.j
 import { connectViaDesktop } from '../lib/native-bridge.js';
 import { notifyDone, requestNotifPermission } from '../lib/notify.js';
 import { rankPlaybooks } from '../lib/playbook-rank.js';
+import { matchMatters } from '../lib/matter-match.js';
 import {
   mountConnect, getState, getInstanceInfo,
   connectViaOAuth, disconnect,
@@ -32,6 +33,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 
 const shell = $('#lana-shell');
 const MAX_COMPOSER = 8000; // cap composer length (pasted content included)
+const MAX_CLIP = 8000; // cap clip text sent for suggestion/filing (matches backend)
 
 /** Cached instance URL — preloaded so OAuth's permission request keeps the click gesture. */
 let instanceUrlValue = '';
@@ -552,6 +554,265 @@ async function fileToMatter(cid, matterId, anchor) {
   }
 }
 
+/* ============================ Clip review panel ======================= */
+/*
+ * Manual "clip → smart-file to matter" flow. Entry points:
+ *   1. Context menu "Clip selection to LANA" → SW saves the clip + stashes it →
+ *      opens this panel (consumePendingClipReview on boot / on LANA_CLIP_REVIEW_READY).
+ *   2. Captured view "Clip selection" button → LANA_CLIP_SELECTION grabs the
+ *      active tab's selection, SW saves it, then we open this panel.
+ * The panel recommends matters (server suggestMatters, else the local keyword
+ * matcher), lets the user multi-select + edit the text, and files per-matter.
+ */
+
+/** The clip currently under review: { id, text, url, title, ... }. */
+let currentClip = null;
+/** Merged matter rows for the review list: [{ id, name, meta, score, reason, recommended }]. */
+let clipMatters = [];
+/** Set of matter ids the user has checked to file into. */
+const clipSelected = new Set();
+
+/** Build a safe source line (clickable only for http(s) urls). */
+function clipSourceHtml(clip) {
+  const url = clip.url || '';
+  const label = clip.title || url;
+  if (!label) return '';
+  if (/^https?:\/\//i.test(url)) {
+    return `<div class="l-clip-src">Source: <span class="l-ilink" data-clip-open="${esc(url)}" role="link" tabindex="0" title="Open source">${esc(label)}</span></div>`;
+  }
+  return `<div class="l-clip-src">Source: ${esc(label)}</div>`;
+}
+
+/** Open the review sheet for a saved clip and kick off matter suggestions. */
+async function openClipReview(clip) {
+  if (!clip) return;
+  currentClip = clip;
+  clipSelected.clear();
+  clipMatters = [];
+  const text = String(clip.text || clip.selection || '').slice(0, MAX_CLIP);
+  const body = $('#l-clip-body');
+  if (!body) return;
+  body.innerHTML = `
+    <h2>File this clip to a matter</h2>
+    ${clipSourceHtml(clip)}
+    <textarea class="l-clip-text" id="l-clip-text" aria-label="Clip text" maxlength="${MAX_CLIP}"></textarea>
+    <div class="l-clip-cap" id="l-clip-cap"></div>
+    <div class="l-eyebrow2" style="margin-top:14px">Matters <span id="l-clip-srcnote" style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--l-faint)"></span></div>
+    <div class="l-clip-list" id="l-clip-list"><div class="l-emptynote" style="padding:12px 4px">Finding matters…</div></div>
+    <div class="l-clip-status" id="l-clip-status"></div>
+    <div class="l-clip-actions">
+      <button class="l-btn l-btn-primary l-btn-full" id="l-clip-file" disabled>File to selected</button>
+      <button class="l-btn l-btn-ghost l-btn-full" id="l-clip-savecap">Just save to Captured</button>
+    </div>`;
+  // Set textarea value via .value (never HTML) so page text can't inject markup.
+  const ta = $('#l-clip-text');
+  ta.value = text;
+  const updateCap = () => {
+    const n = ta.value.length;
+    $('#l-clip-cap').textContent = n >= MAX_CLIP ? `Trimmed to the ${MAX_CLIP.toLocaleString()}-character limit.` : `${n.toLocaleString()} characters`;
+  };
+  ta.addEventListener('input', updateCap);
+  updateCap();
+  // Open-source link (re-validate scheme at click time).
+  $$('[data-clip-open]', body).forEach((el) => {
+    const open = () => { const u = el.dataset.clipOpen; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); };
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
+  $('#l-clip-file').addEventListener('click', fileClipToSelected);
+  $('#l-clip-savecap').addEventListener('click', () => {
+    closeClipReview();
+    flashStatus('Saved to Captured.');
+    if (currentView === 'captured') renderCaptured();
+  });
+
+  $('#l-clip-scrim').hidden = false;
+
+  // Load matters + suggestions. getMatters() is empty when unauthenticated.
+  const matters = await getMatters();
+  await suggestForClip(text, matters);
+}
+
+function closeClipReview() {
+  const scrim = $('#l-clip-scrim');
+  if (scrim) scrim.hidden = true;
+  currentClip = null;
+  clipSelected.clear();
+  clipMatters = [];
+}
+
+/**
+ * Fetch server suggestions for the clip; on any failure (404/offline/unauth or
+ * empty result) fall back to the pure local keyword matcher against the known
+ * matter list. Then merge into the manual matter list and render.
+ */
+async function suggestForClip(text, matters) {
+  let recos = [];
+  let fallback = false;
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'LANA_SUGGEST_MATTERS', text: text.slice(0, MAX_CLIP) });
+    if (res && !res.error && Array.isArray(res.suggestions) && res.suggestions.length) {
+      recos = res.suggestions;
+    } else {
+      fallback = true;
+    }
+  } catch {
+    fallback = true;
+  }
+  if (fallback || !recos.length) {
+    recos = matchMatters(text, matters, 5);
+    fallback = true;
+  }
+
+  // Merge recommendations into the full matter list (recommended rows sort first).
+  const recoById = new Map();
+  for (const r of recos) if (r && r.matter_id) recoById.set(String(r.matter_id), r);
+  const merged = matters.map((m) => {
+    const r = recoById.get(String(m.id));
+    return { id: m.id, name: m.name, meta: m.meta, recommended: !!r, score: r ? r.score : null, reason: r ? r.reason : '' };
+  });
+  // Append any recommended matters not present in the manual list (server-only).
+  for (const r of recos) {
+    if (!merged.some((m) => String(m.id) === String(r.matter_id))) {
+      merged.push({ id: r.matter_id, name: r.name, meta: '', recommended: true, score: r.score, reason: r.reason });
+    }
+  }
+  merged.sort((a, b) => (Number(b.recommended) - Number(a.recommended)) || ((b.score ?? -1) - (a.score ?? -1)));
+  clipMatters = merged;
+
+  const note = $('#l-clip-srcnote');
+  if (note) {
+    if (!matters.length && !recos.length) note.textContent = '';
+    else if (fallback) note.textContent = recos.length ? '· matched on keywords' : '';
+    else note.textContent = '· suggested by LANA';
+  }
+  renderClipList(matters.length > 0);
+}
+
+function renderClipList(authed) {
+  const el = $('#l-clip-list');
+  if (!el) return;
+  if (!clipMatters.length) {
+    el.innerHTML = `<div class="l-emptynote" style="padding:12px 4px">${
+      authed ? 'No matters yet — create one in LANA GPT, or just save to Captured.'
+             : 'Authorize LANA GPT in Settings to file to a matter. You can still save to Captured.'
+    }</div>`;
+    updateClipFileBtn();
+    return;
+  }
+  el.innerHTML = clipMatters.map((m) => {
+    const checked = clipSelected.has(String(m.id)) ? 'checked' : '';
+    const pct = typeof m.score === 'number' ? ` · ${Math.round(Math.max(0, Math.min(1, m.score)) * 100)}%` : '';
+    const badge = m.recommended ? `<span class="l-badge sov" style="margin-left:6px">Suggested${esc(pct)}</span>` : '';
+    return `<label class="l-clip-row${m.recommended ? ' reco' : ''}">
+      <input type="checkbox" data-mid="${esc(String(m.id))}" ${checked}>
+      <span style="min-width:0">
+        <span class="l-clip-mname">${esc(m.name)}${badge}</span>
+        ${m.reason ? `<span class="l-clip-reason">${esc(m.reason)}</span>` : (m.meta ? `<span class="l-clip-reason">${esc(m.meta)}</span>` : '')}
+      </span>
+    </label>`;
+  }).join('');
+  $$('input[data-mid]', el).forEach((cb) => cb.addEventListener('change', () => {
+    const id = cb.dataset.mid;
+    if (cb.checked) clipSelected.add(id); else clipSelected.delete(id);
+    updateClipFileBtn();
+  }));
+  updateClipFileBtn();
+}
+
+function updateClipFileBtn() {
+  const btn = $('#l-clip-file');
+  if (btn) btn.disabled = clipSelected.size === 0;
+}
+
+/** File the (edited) clip text into each selected matter, reporting per-matter. */
+async function fileClipToSelected() {
+  if (!currentClip) return;
+  const ta = $('#l-clip-text');
+  const text = (ta ? ta.value : '').trim().slice(0, MAX_CLIP);
+  if (!text) { setClipStatus('<div class="l-clip-fstatus"><span class="bad">✕</span> The clip is empty — nothing to file.</div>'); return; }
+  const ids = [...clipSelected];
+  if (!ids.length) return;
+  const fileBtn = $('#l-clip-file');
+  const saveBtn = $('#l-clip-savecap');
+  fileBtn.disabled = true;
+  fileBtn.textContent = 'Filing…';
+  const status = $('#l-clip-status');
+  status.innerHTML = '';
+  const sourceId = currentClip.url || String(currentClip.id || '');
+  let okCount = 0;
+  for (const mid of ids) {
+    const name = (clipMatters.find((m) => String(m.id) === String(mid)) || {}).name || 'matter';
+    const row = document.createElement('div');
+    row.className = 'l-clip-fstatus';
+    row.innerHTML = `<span class="l-spin"></span>Filing to ${esc(name)}…`;
+    status.appendChild(row);
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'LANA_SEND_KNOWLEDGE', matterId: mid, content: text, sourceId });
+      if (res && res.error) throw new Error(res.error);
+      okCount++;
+      row.innerHTML = `<span class="ok">✓</span> Filed to ${esc(name)}`;
+    } catch (err) {
+      row.innerHTML = `<span class="bad">✕</span> ${esc(name)}: ${esc(err.message || 'failed')}`;
+    }
+  }
+  fileBtn.textContent = 'File to selected';
+  fileBtn.disabled = clipSelected.size === 0;
+  if (okCount) {
+    notifyDone({ id: 'lana-clip-filed', title: 'Filed to LANA', message: `Clip filed to ${okCount} matter${okCount > 1 ? 's' : ''}.` });
+    if (saveBtn) saveBtn.textContent = 'Done';
+    if (currentView === 'captured') renderCaptured();
+  }
+}
+
+function setClipStatus(html) {
+  const status = $('#l-clip-status');
+  if (status) status.innerHTML = html;
+}
+
+/** Clip-selection affordance: ask the active tab for its current selection. */
+async function clipCurrentSelection(anchor) {
+  const label = anchor ? anchor.getAttribute('title') : '';
+  if (anchor) anchor.disabled = true;
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'LANA_CLIP_SELECTION' });
+    if (!res || res.error) { flashStatus(res?.error || 'Couldn’t read the page selection.', true); return; }
+    if (currentView === 'captured') renderCaptured();
+    await openClipReview(res.clip);
+  } catch (err) {
+    flashStatus(`Couldn’t clip: ${err.message}`, true);
+  } finally {
+    if (anchor) { anchor.disabled = false; if (label) anchor.setAttribute('title', label); }
+  }
+}
+
+/** Pick up a clip stashed by the context-menu handler and open its review. */
+async function consumePendingClipReview() {
+  let pending;
+  try {
+    const r = await chrome.storage.local.get('lanaPendingClipReview');
+    pending = r.lanaPendingClipReview;
+  } catch { return; }
+  if (!pending || !pending.clip) return;
+  // Ignore stale hand-offs (e.g. a clip from a previous session).
+  if (pending.ts && Date.now() - pending.ts > 5 * 60 * 1000) {
+    try { await chrome.storage.local.remove('lanaPendingClipReview'); } catch { /* ignore */ }
+    return;
+  }
+  try { await chrome.storage.local.remove('lanaPendingClipReview'); } catch { /* ignore */ }
+  await openClipReview(pending.clip);
+}
+
+function wireClipReview() {
+  $('#l-clip-selection')?.addEventListener('click', (e) => clipCurrentSelection(e.currentTarget));
+  const scrim = $('#l-clip-scrim');
+  scrim?.addEventListener('click', (e) => { if (e.target === scrim) closeClipReview(); });
+  // The context-menu handler nudges an already-open panel to pick up its clip.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') consumePendingClipReview();
+  });
+}
+
 /* ============================ History view ============================= */
 
 async function renderHistory() {
@@ -878,10 +1139,14 @@ async function boot() {
   wireAgent();
   wireSettings();
   wirePlaybookSheet();
+  wireClipReview();
   wireMisc();
   updateSendEnabled();
 
   await maybeFirstRun();
+
+  // A context-menu clip may have opened this panel — pick it up for review.
+  consumePendingClipReview();
 }
 
 /* ============================ util ==================================== */

@@ -312,6 +312,28 @@
 .l-opt .chev { margin-left: auto; align-self: center; color: var(--l-faint); }
 .l-foot { text-align: center; font-size: 12.5px; color: var(--l-faint); margin-top: 14px; line-height: 1.5; }
 
+/* ======================= Clip review sheet ============================= */
+.l-clip-sheet { max-height: 88vh; display: flex; flex-direction: column; }
+#l-clip-body { overflow-y: auto; }
+.l-clip-src { font-size: 12px; color: var(--l-dim); margin: 8px 0 12px; word-break: break-all; }
+.l-clip-src a, .l-clip-src .l-ilink { color: var(--l-accent-hi); cursor: pointer; text-decoration: none; }
+.l-clip-src a:hover, .l-clip-src .l-ilink:hover { text-decoration: underline; }
+textarea.l-clip-text { width: 100%; min-height: 84px; max-height: 200px; resize: vertical; font-family: var(--l-font); font-size: 13px; line-height: 1.5; color: var(--l-text); background: var(--l-surface-2); border: 1px solid var(--l-border); border-radius: 11px; padding: 11px 12px; box-sizing: border-box; }
+textarea.l-clip-text:focus { outline: none; border-color: var(--l-accent-line); box-shadow: 0 0 0 3px var(--l-accent-soft); }
+.l-clip-cap { font-size: 11px; color: var(--l-faint); margin-top: 4px; }
+.l-clip-list { margin: 4px 0 6px; }
+.l-clip-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 4px; border-top: 1px solid var(--l-border-soft); cursor: pointer; }
+.l-clip-row:first-child { border-top: none; }
+.l-clip-row input { margin-top: 2px; flex: 0 0 auto; accent-color: var(--l-accent); width: 15px; height: 15px; cursor: pointer; }
+.l-clip-row.reco { background: rgba(48,103,255,0.05); border-radius: 9px; }
+.l-clip-mname { font-size: 13.5px; font-weight: 600; color: var(--l-text); display: block; }
+.l-clip-reason { font-size: 11.5px; color: var(--l-dim); display: block; margin-top: 2px; line-height: 1.4; }
+.l-clip-status { margin: 6px 0 4px; }
+.l-clip-fstatus { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--l-dim); padding: 5px 2px; }
+.l-clip-fstatus .ok { color: #5fd6a0; font-weight: 700; }
+.l-clip-fstatus .bad { color: var(--l-danger); font-weight: 700; }
+.l-clip-actions { display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
+
 /* ======================= First-run full screens ======================== */
 .l-screen { flex: 1; display: flex; flex-direction: column; padding: 20px 22px 22px; overflow-y: auto; }
 .l-steps { display: flex; gap: 6px; justify-content: center; padding: 6px 0 26px; }

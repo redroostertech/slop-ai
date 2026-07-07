@@ -9,6 +9,7 @@
     "storage",
     "activeTab",
     "scripting",
+    "contextMenus",
     "offscreen",
     "identity"
   ],

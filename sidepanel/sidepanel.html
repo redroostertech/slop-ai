@@ -75,6 +75,8 @@
         <button class="l-tbtn" data-lback title="Back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
         <h1>Captured</h1>
         <span class="l-count" id="l-captured-count">0</span>
+        <span class="l-sp"></span>
+        <button class="l-tbtn" id="l-clip-selection" title="Clip the current selection on this page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg></button>
       </div>
       <div class="l-segbar" id="l-captured-segs">
         <button class="l-seg on" data-lseg="all">All</button>
@@ -227,6 +229,14 @@
         <span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></span>
       </div>
       <p class="l-foot">Both create a playbook you can run with <span class="l-kbd">/name</span></p>
+    </div>
+  </div>
+
+  <!-- Clip review bottom sheet (populated by lana-ui.js) -->
+  <div class="l-scrim" id="l-clip-scrim" hidden>
+    <div class="l-sheet l-clip-sheet">
+      <div class="l-grab"></div>
+      <div id="l-clip-body"></div>
     </div>
   </div>
 

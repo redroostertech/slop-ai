@@ -8,7 +8,7 @@ import { getInstance, setInstance, normalizeInstanceUrl } from '../lib/instance.
 import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAuthState, authorizeOAuth, getEntitlements } from '../lib/lana-auth.js';
 import {
   listMatters, sendKnowledge, sendMemory, sendDocument,
-  getMemoryPreference, setMemoryPreference,
+  getMemoryPreference, setMemoryPreference, suggestMatters,
 } from '../lib/lana-client.js';
 import { route as routeTask } from '../lib/router.js';
 // Capability modules.
@@ -18,7 +18,7 @@ import { saveClip } from '../lib/capabilities/research-capture.js';
 import { surface } from '../lib/capabilities/surface.js';
 import { proposeFills } from '../lib/capabilities/form-fill.js';
 // Any-page capability delivery (chrome.scripting on the active tab).
-import { clipActiveTab, detectFieldsActiveTab, applyFieldActiveTab, activeTabOrigin } from '../lib/page-capture.js';
+import { clipActiveTab, selectionActiveTab, detectFieldsActiveTab, applyFieldActiveTab, activeTabOrigin } from '../lib/page-capture.js';
 // WebLLM offscreen document (WebGPU is unavailable in the service worker).
 import { ensureOffscreen } from '../lib/offscreen-manager.js';
 
@@ -63,6 +63,71 @@ chrome.permissions?.onAdded?.addListener?.((p) => {
   if (p?.permissions?.includes('notifications')) registerNotificationClick();
 });
 
+// ---------------------------------------------------------------------------
+// Context menu: "Clip selection to LANA"
+// Fires on any page when the user has selected text. Captures the selection +
+// page url/title, persists it to the Captured store (kind:'clip'), then opens
+// the side panel and hands off to the Clip Review panel. Registered on install;
+// the onClicked listener is registered at top level so it survives SW restarts.
+// ---------------------------------------------------------------------------
+const CLIP_MENU_ID = 'lana-clip-selection';
+
+function registerClipContextMenu() {
+  if (!chrome.contextMenus) return;
+  try {
+    // removeAll → create avoids a "duplicate id" throw across SW restarts / updates.
+    chrome.contextMenus.removeAll(() => {
+      // Reading lastError clears the "unchecked runtime.lastError" console warning.
+      void chrome.runtime.lastError;
+      try {
+        chrome.contextMenus.create({
+          id: CLIP_MENU_ID,
+          title: 'Clip selection to LANA',
+          contexts: ['selection'],
+        });
+      } catch (_e) { /* already exists / unavailable */ }
+    });
+  } catch (_e) { /* contextMenus unavailable */ }
+}
+
+async function onClipContextMenuClicked(info, tab) {
+  if (info.menuItemId !== CLIP_MENU_ID) return;
+  const text = (info.selectionText || '').trim();
+  if (!text) return;
+  // Open the side panel FIRST while the context-menu click gesture is still live
+  // (sidePanel.open requires a user gesture; awaiting IndexedDB before it would
+  // spend the gesture and the panel wouldn't open).
+  if (tab && typeof tab.windowId === 'number') {
+    try { chrome.sidePanel.open({ windowId: tab.windowId }); } catch { /* gesture/availability */ }
+  }
+  const clip = {
+    title: (tab && tab.title) || '',
+    url: info.pageUrl || (tab && tab.url) || '',
+    text,
+    selection: text,
+    source: 'clip',
+    kind: 'clip',
+  };
+  try {
+    const saved = await saveClip(clip);
+    // Stash the clip so the side panel can pick it up for review (covers both the
+    // just-opened and already-open panel; a runtime message nudges the open one).
+    try {
+      await chrome.storage.local.set({
+        lanaPendingClipReview: { id: saved.id, clip: { ...clip, id: saved.id }, ts: Date.now() },
+      });
+    } catch { /* storage unavailable */ }
+    try { chrome.runtime.sendMessage({ type: 'LANA_CLIP_REVIEW_READY', id: saved.id }).catch(() => {}); } catch { /* no listener */ }
+  } catch (err) {
+    // Don't log the clip text; only that saving failed.
+    console.warn('[LANA AI] Clip save failed:', err?.message || err);
+  }
+}
+
+registerClipContextMenu();
+chrome.runtime.onInstalled?.addListener?.(registerClipContextMenu);
+chrome.contextMenus?.onClicked?.addListener?.(onClipContextMenuClicked);
+
 // Warm the WebLLM offscreen document up front (best-effort). No-ops if the
 // "offscreen" permission or the vendored runtime is missing; the router also
 // creates it lazily on first use.
@@ -79,8 +144,8 @@ ensureOffscreen().catch((err) =>
 const EXTENSION_ONLY_MESSAGES = new Set([
   'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_AUTHORIZE',
   'LANA_LOGIN', 'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
-  'LANA_SEND_MEMORY', 'LANA_GET_MEMORY_PREF', 'LANA_SET_MEMORY_PREF',
-  'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF',
+  'LANA_SEND_MEMORY', 'LANA_GET_MEMORY_PREF', 'LANA_SET_MEMORY_PREF', 'LANA_SUGGEST_MATTERS',
+  'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF', 'LANA_CLIP_SELECTION',
   'LANA_IMPORT', 'LANA_SURFACE', 'LANA_PROPOSE_FILLS',
 ]);
 
@@ -290,6 +355,12 @@ async function handleMessage(message, sender) {
         sourceId: message.sourceId,
       });
 
+    // Recommend which matters a clip should be filed into. Throws on 404/offline/
+    // unauth; the sidepanel catches that and falls back to the local keyword
+    // matcher (lib/matter-match.js). The clip text is never logged.
+    case 'LANA_SUGGEST_MATTERS':
+      return { suggestions: await suggestMatters(message.text) };
+
     case 'LANA_SEND_MEMORY':
       return await sendMemory({ fact: message.fact, matterId: message.matterId });
 
@@ -346,6 +417,27 @@ async function handleMessage(message, sender) {
         allowedMemory: message.allowedMemory,
         origin: message.origin,
       });
+
+    // Clip the CURRENT SELECTION on the active tab (side-panel "Clip selection"
+    // affordance). Grabs window.getSelection() via chrome.scripting, persists it
+    // to Captured (kind:'clip'), and returns the saved clip so the panel can open
+    // the Clip Review. Extension-page-only (allowlisted); the panel has no tab so
+    // resolveTab falls back to the active tab.
+    case 'LANA_CLIP_SELECTION': {
+      const sel = await selectionActiveTab();
+      const selection = (sel && sel.selection || '').trim();
+      if (!selection) return { error: 'Select some text on the page first, then clip it.' };
+      const clip = {
+        title: (sel && sel.title) || '',
+        url: (sel && sel.url) || '',
+        text: selection,
+        selection,
+        source: 'clip',
+        kind: 'clip',
+      };
+      const saved = await saveClip(clip);
+      return { ok: true, id: saved.id, clip: { ...clip, id: saved.id } };
+    }
 
     // Clip the TRIGGERING tab via chrome.scripting, then persist it. Uses the
     // sender's tab id (not a fresh active-tab query) so a tab switch during the
