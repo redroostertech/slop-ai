@@ -272,7 +272,7 @@
 .l-iexcerpt {
   margin: 8px 0 2px; padding: 8px 10px; font-size: 12px; line-height: 1.5;
   color: var(--l-dim); background: var(--l-surface-2); border: 1px solid var(--l-border-soft);
-  border-radius: 8px; cursor: pointer;
+  border-radius: 8px; cursor: pointer; white-space: pre-wrap; /* keep list/line breaks visible */
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .l-iexcerpt:hover { color: var(--l-text); border-color: var(--l-accent-line); }
