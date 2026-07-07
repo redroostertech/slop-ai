@@ -20,6 +20,7 @@ import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.j
 import { connectViaDesktop } from '../lib/native-bridge.js';
 import { notifyDone, requestNotifPermission } from '../lib/notify.js';
 import { rankPlaybooks } from '../lib/playbook-rank.js';
+import { fragmentUrl } from '../lib/text-fragment.js';
 import { matchMatters } from '../lib/matter-match.js';
 import {
   mountConnect, getState, getInstanceInfo,
@@ -415,48 +416,122 @@ async function renderCaptured() {
     return;
   }
   const matters = await getMatters();
-  list.innerHTML = filtered.map((it) => {
-    // saveClip stores the clipped text in `excerpt` + `messages[0].content` (not
-    // `text`/`selection`). Read those, with legacy fallbacks.
-    const clipText = it.kind === 'clip'
-      ? String(it._c?.excerpt || it._c?.messages?.[0]?.content || it._c?.text || it._c?.selection || '').trim()
-      : '';
-    const excerpt = clipText
-      ? `<div class="l-iexcerpt" data-view="${esc(it.id)}" role="button" tabindex="0" title="View the full clip">${esc(clipText.slice(0, 220))}${clipText.length > 220 ? '…' : ''}</div>`
-      : '';
-    return `
+  // Group clips from the SAME page into one collapsible card; everything else
+  // (AI chats, imports, single clips) stays an individual item. Ordered newest-first.
+  const groups = new Map();
+  const units = [];
+  for (const it of filtered) {
+    if (it.kind === 'clip' && /^https?:\/\//i.test(it.url || '')) {
+      if (!groups.has(it.url)) { const arr = []; groups.set(it.url, arr); units.push({ type: 'group', url: it.url, items: arr }); }
+      groups.get(it.url).push(it);
+    } else {
+      units.push({ type: 'single', item: it });
+    }
+  }
+  const finalUnits = units.map((u) => (u.type === 'group' && u.items.length === 1) ? { type: 'single', item: u.items[0] } : u);
+  const whenOf = (u) => u.type === 'group' ? Math.max(0, ...u.items.map((i) => i.when || 0)) : (u.item.when || 0);
+  finalUnits.sort((a, b) => whenOf(b) - whenOf(a));
+  list.innerHTML = finalUnits.map((u) => u.type === 'group' ? capturedGroupHtml(u) : capturedSingleHtml(u.item)).join('');
+  wireCapturedHandlers(list);
+}
+
+/* ---- Captured rendering (single item + same-page clip group) ---- */
+
+const DEL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+const PAGE_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>';
+
+/** The clipped text from a stored clip (saveClip shape: excerpt / messages[0].content). */
+function clipTextOf(it) {
+  return String(it?._c?.excerpt || it?._c?.messages?.[0]?.content || it?._c?.text || it?._c?.selection || '').trim();
+}
+
+function excerptHtml(it, cls) {
+  const t = it.kind === 'clip' ? clipTextOf(it) : '';
+  if (!t) return '';
+  return `<div class="l-iexcerpt${cls ? ' ' + cls : ''}" data-view="${esc(it.id)}" role="button" tabindex="0" title="View the full clip">${esc(t.slice(0, 220))}${t.length > 220 ? '…' : ''}</div>`;
+}
+
+function capturedActionsHtml(it, extra) {
+  return `<button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete">${DEL_SVG}</button>${extra || ''}<span class="l-sp"></span><button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button><button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>`;
+}
+
+function capturedSingleHtml(it) {
+  const clipText = it.kind === 'clip' ? clipTextOf(it) : '';
+  const hasUrl = /^https?:\/\//i.test(it.url);
+  // For a clip, the title opens the page AT the highlighted passage; else plain source.
+  const titleInner = hasUrl
+    ? (clipText
+        ? `<span class="l-ilink" data-openpage="${esc(it.id)}" role="link" tabindex="0" title="Open the page with this clip highlighted">${esc(it.title)}${PAGE_SVG}</span>`
+        : `<span class="l-ilink" data-open="${esc(it.url)}" role="link" tabindex="0" title="Open source">${esc(it.title)}${PAGE_SVG}</span>`)
+    : esc(it.title);
+  return `
     <div class="l-item" data-cid="${esc(it.id)}">
       <div class="l-itop">
         <span class="l-sico ${it.platform.cls}">${esc(it.platform.glyph)}</span>
-        <div class="l-ititle">${
-          /^https?:\/\//i.test(it.url)
-            ? `<span class="l-ilink" data-open="${esc(it.url)}" role="link" tabindex="0" title="Open source">${esc(it.title)}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:5px;vertical-align:-1px;opacity:.55"><path d="M7 17 17 7M8 7h9v9"/></svg></span>`
-            : esc(it.title)
-        }<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
+        <div class="l-ititle">${titleInner}<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
       </div>
-      ${excerpt}
-      <div class="l-actions">
-        <button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete from Captured"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>
-        <span class="l-sp"></span>
-        <button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button>
-        <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>
-      </div>
+      ${excerptHtml(it)}
+      <div class="l-actions">${capturedActionsHtml(it)}</div>
     </div>`;
-  }).join('');
+}
+
+function capturedGroupHtml(u) {
+  const first = u.items[0];
+  const title = first.title || u.url;
+  let host = u.url; try { host = new URL(u.url).host; } catch { /* keep raw */ }
+  const rows = u.items.map((it) => `
+    <div class="l-gclip" data-cid="${esc(it.id)}">
+      ${excerptHtml(it, 'gclip') || '<div class="l-iexcerpt gclip">(no text)</div>'}
+      <div class="l-actions">${capturedActionsHtml(it, `<button class="l-btn l-btn-ghost l-icobtn" data-openpage="${esc(it.id)}" title="Open highlighted in the page">${PAGE_SVG}</button>`)}</div>
+    </div>`).join('');
+  return `
+    <div class="l-group">
+      <div class="l-ghead" data-gtoggle role="button" tabindex="0" aria-expanded="false">
+        <span class="l-sico ${first.platform.cls}">${esc(first.platform.glyph)}</span>
+        <div class="l-ititle">${esc(title)}<div class="l-imeta">${esc(host)} · ${u.items.length} clips</div></div>
+        <button class="l-btn l-btn-ghost l-icobtn" data-openall="${esc(u.url)}" title="Open all clips highlighted in the page">${PAGE_SVG}</button>
+        <span class="l-gchev">▸</span>
+      </div>
+      <div class="l-gbody" hidden>${rows}</div>
+    </div>`;
+}
+
+function wireCapturedHandlers(list) {
+  const key = (el, fn) => { el.addEventListener('click', fn); el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } }); };
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
   $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
   $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => deleteCaptured(b.dataset.del)));
-  $$('[data-view]', list).forEach((el) => {
-    const view = () => viewClip(el.dataset.view);
-    el.addEventListener('click', view);
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); view(); } });
+  $$('[data-view]', list).forEach((el) => key(el, () => viewClip(el.dataset.view)));
+  $$('[data-open]', list).forEach((el) => key(el, () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); }));
+  $$('[data-openpage]', list).forEach((el) => key(el, () => openClipInPage(el.dataset.openpage)));
+  $$('[data-openall]', list).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openGroupInPage(b.dataset.openall); }));
+  $$('[data-gtoggle]', list).forEach((h) => {
+    const toggle = () => {
+      const body = h.parentElement.querySelector('.l-gbody');
+      if (!body) return;
+      body.hidden = !body.hidden;
+      h.setAttribute('aria-expanded', String(!body.hidden));
+      h.querySelector('.l-gchev')?.classList.toggle('open', !body.hidden);
+    };
+    h.addEventListener('click', (e) => { if (e.target.closest('[data-openall]')) return; toggle(); });
+    h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
   });
-  $$('[data-open]', list).forEach((el) => {
-    // Re-validate the scheme at click time too — never open a non-http(s) URL.
-    const open = () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); };
-    el.addEventListener('click', open);
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
-  });
+}
+
+/** Open a page (new tab) with one or more clipped passages natively highlighted. */
+function openInPage(url, texts) {
+  if (!/^https?:\/\//i.test(url || '')) return; // never open a non-http(s) scheme
+  chrome.tabs.create({ url: fragmentUrl(url, texts) });
+}
+
+async function openClipInPage(id) {
+  const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
+  if (it) openInPage(it.url, [clipTextOf(it)]);
+}
+
+async function openGroupInPage(url) {
+  const items = (await getCapturedItems()).filter((x) => x.kind === 'clip' && x.url === url);
+  openInPage(url, items.map(clipTextOf).filter(Boolean));
 }
 
 /** Delete a captured item (clip/chat/import) from the device, with a confirm. */
