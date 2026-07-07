@@ -313,7 +313,8 @@ async function getCapturedItems() {
       const p = PLATFORM[src] || { cls: 'import', glyph: '·', label: src || 'Chat' };
       return {
         id: c.id, title: c.title || '(untitled)', platform: p, kind: c.kind || 'chat',
-        badge: p.label, when: c.timestamp || c.updatedAt || 0, source: src, _c: c,
+        badge: p.label, when: c.timestamp || c.updatedAt || 0, source: src,
+        url: c.url || c.sourceUrl || '', _c: c,
       };
     });
 }
@@ -411,7 +412,11 @@ async function renderCaptured() {
     <div class="l-item" data-cid="${esc(it.id)}">
       <div class="l-itop">
         <span class="l-sico ${it.platform.cls}">${esc(it.platform.glyph)}</span>
-        <div class="l-ititle">${esc(it.title)}<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
+        <div class="l-ititle">${
+          /^https?:\/\//i.test(it.url)
+            ? `<span class="l-ilink" data-open="${esc(it.url)}" role="link" tabindex="0" title="Open source">${esc(it.title)}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:5px;vertical-align:-1px;opacity:.55"><path d="M7 17 17 7M8 7h9v9"/></svg></span>`
+            : esc(it.title)
+        }<div class="l-imeta">${esc(it.platform.label)}${it.when ? ' · ' + timeAgo(it.when) : ''}</div></div>
       </div>
       <div class="l-actions">
         <span class="l-sp"></span>
@@ -421,6 +426,12 @@ async function renderCaptured() {
     </div>`).join('');
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
   $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
+  $$('[data-open]', list).forEach((el) => {
+    // Re-validate the scheme at click time too — never open a non-http(s) URL.
+    const open = () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); };
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
 }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */

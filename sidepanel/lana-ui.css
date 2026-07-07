@@ -262,6 +262,9 @@
 .l-sico.clip { background: rgba(224,163,38,0.14); color: var(--l-warn); }
 .l-sico.import { background: var(--l-accent-soft); color: var(--l-accent-hi); }
 .l-ititle { font-size: 13.5px; font-weight: 600; line-height: 1.3; flex: 1; }
+.l-ilink { cursor: pointer; }
+.l-ilink:hover { text-decoration: underline; text-underline-offset: 2px; }
+.l-ilink:focus-visible { outline: 2px solid var(--l-accent-hi); outline-offset: 2px; border-radius: 3px; }
 .l-imeta { font-size: 11px; color: var(--l-faint); margin-top: 2px; font-weight: 400; }
 .l-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .l-suggest { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--l-accent-hi); background: var(--l-accent-soft); border: 1px solid rgba(48,103,255,0.28); border-radius: 999px; padding: 5px 10px; }
