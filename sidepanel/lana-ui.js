@@ -306,10 +306,13 @@ function convText(c) {
   return parts.filter(Boolean).join('\n').slice(0, 20000);
 }
 
+/** id → display item, kept fresh so click handlers can resolve a clip synchronously
+ *  (needed so the host-permission request keeps the click's user gesture). */
+let _capturedById = new Map();
 async function getCapturedItems() {
   let convs = [];
   try { convs = await dbGetAll('conversations'); } catch { convs = []; }
-  return convs
+  const mapped = convs
     .sort((a, b) => (b.timestamp || b.updatedAt || 0) - (a.timestamp || a.updatedAt || 0))
     .map((c) => {
       const src = (c.source || c.platform || '').toLowerCase();
@@ -320,6 +323,8 @@ async function getCapturedItems() {
         url: c.url || c.sourceUrl || '', _c: c,
       };
     });
+  _capturedById = new Map(mapped.map((m) => [String(m.id), m]));
+  return mapped;
 }
 
 let _mattersCache = null;
@@ -518,20 +523,58 @@ function wireCapturedHandlers(list) {
   });
 }
 
-/** Open a page (new tab) with one or more clipped passages natively highlighted. */
+/** Fallback: open the page with native Scroll-to-Text-Fragment highlighting. */
 function openInPage(url, texts) {
   if (!/^https?:\/\//i.test(url || '')) return; // never open a non-http(s) scheme
   chrome.tabs.create({ url: fragmentUrl(url, texts) });
 }
 
-async function openClipInPage(id) {
-  const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
-  if (it) openInPage(it.url, [clipTextOf(it)]);
+/**
+ * PRIMARY: open the page and highlight the passages with our structure-agnostic
+ * in-page matcher (CSS Custom Highlight API). Requests per-site host permission on
+ * THIS click gesture; declines / unavailable / no-match all fall back to native
+ * text fragments. MUST be called synchronously from the click (no await before the
+ * permission request) or the gesture is spent and the prompt is rejected.
+ */
+async function openHighlighted(url, texts) {
+  if (!/^https?:\/\//i.test(url || '')) return;
+  const passages = (texts || []).filter(Boolean);
+  let pattern;
+  try { pattern = new URL(url).origin + '/*'; } catch { openInPage(url, passages); return; }
+  let granted = false;
+  try { granted = await chrome.permissions.request({ origins: [pattern] }); } catch { granted = false; }
+  if (!granted) { openInPage(url, passages); return; } // user declined → native fallback
+  let tab;
+  try { tab = await chrome.tabs.create({ url }); } catch { return; }
+  await new Promise((resolve) => {
+    const finish = () => { chrome.tabs.onUpdated.removeListener(onUpd); clearTimeout(timer); resolve(); };
+    const onUpd = (id, info) => { if (id === tab.id && info.status === 'complete') finish(); };
+    const timer = setTimeout(finish, 8000); // don't hang if 'complete' never fires
+    chrome.tabs.onUpdated.addListener(onUpd);
+  });
+  try {
+    const res = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      // Dynamic-import the web-accessible matcher into the page and run it.
+      func: (modUrl, clipTexts) => import(modUrl).then((m) => m.runHighlight(clipTexts)).catch(() => 0),
+      args: [chrome.runtime.getURL('lib/highlighter.js'), passages],
+    });
+    const hits = res && res[0] && res[0].result;
+    if (!hits) chrome.tabs.update(tab.id, { url: fragmentUrl(url, passages) }).catch(() => {}); // no DOM match → native
+  } catch {
+    chrome.tabs.update(tab.id, { url: fragmentUrl(url, passages) }).catch(() => {});
+  }
 }
 
-async function openGroupInPage(url) {
-  const items = (await getCapturedItems()).filter((x) => x.kind === 'clip' && x.url === url);
-  openInPage(url, items.map(clipTextOf).filter(Boolean));
+/** Synchronous (uses the cached lookup) so the permission request keeps the gesture. */
+function openClipInPage(id) {
+  const it = _capturedById.get(String(id));
+  if (it) openHighlighted(it.url, [clipFullText(it)]);
+}
+
+function openGroupInPage(url) {
+  const texts = [..._capturedById.values()].filter((x) => x.kind === 'clip' && x.url === url).map(clipFullText);
+  openHighlighted(url, texts);
 }
 
 /** Delete a captured item (clip/chat/import) from the device, with a confirm. */

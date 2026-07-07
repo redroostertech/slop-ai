@@ -63,6 +63,9 @@
       "https://gemini.google.com/*",
       "https://copilot.microsoft.com/*"
     ]
+  }, {
+    "resources": ["lib/highlighter.js"],
+    "matches": ["<all_urls>"]
   }],
   "content_scripts": [
     {
