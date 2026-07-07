@@ -423,7 +423,7 @@ async function renderCaptured() {
       <div class="l-actions">
         <span class="l-sp"></span>
         <button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button>
-        <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}" ${matters.length ? '' : 'disabled title="Authorize LANA GPT to file to a matter"'}>Attach to matter ▾</button>
+        <button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>
       </div>
     </div>`).join('');
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
@@ -493,7 +493,18 @@ async function rememberItem(anchor, cid) {
 
 async function openMatterPicker(anchor, cid) {
   const matters = await getMatters();
-  if (!matters.length) return;
+  if (!matters.length) {
+    // Don't be a silent dead button — explain why there's nothing to file to.
+    if (!authState.authenticated) {
+      showView('settings');
+      flashStatus('Sign in to LANA to file captures to a matter.', true);
+    } else {
+      const prev = anchor.textContent;
+      anchor.textContent = 'No matters yet';
+      setTimeout(() => { anchor.textContent = prev; }, 1600);
+    }
+    return;
+  }
   // lightweight inline menu under the button
   const existing = $('#l-file-menu');
   if (existing) existing.remove();

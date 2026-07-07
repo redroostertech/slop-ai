@@ -171,8 +171,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender).then(result => {
     sendResponse(result);
   }).catch(err => {
-    console.error('[LANA AI] Message error:', message.type, err);
-    sendResponse({ error: err.message });
+    // "Not signed in" is an expected state, not a fault — log it quietly so it
+    // doesn't surface as a red error in the extension's error panel.
+    const benign = err?.code === 'NOT_SIGNED_IN' || /not signed in/i.test(err?.message || '');
+    if (benign) console.debug('[LANA AI]', message.type, '→', err.message);
+    else console.error('[LANA AI] Message error:', message.type, err);
+    sendResponse({ error: err.message, code: err?.code });
   });
   return true; // keep channel open for async response
 });
