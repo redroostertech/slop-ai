@@ -552,7 +552,9 @@ async function openMatterPicker(anchor, cid) {
   const menu = document.createElement('div');
   menu.id = 'l-file-menu';
   menu.className = 'l-menu';
-  menu.style.cssText = 'position:fixed;z-index:60;max-width:280px';
+  // Override the .l-menu class's right/bottom (meant for the upward-opening composer
+  // menu) — otherwise a fixed element with BOTH top and bottom set collapses to ~2px.
+  menu.style.cssText = 'position:fixed;z-index:60;max-width:280px;right:auto;bottom:auto;height:auto';
   menu.innerHTML = matters.length
     ? `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('')
     : _lastMattersError
