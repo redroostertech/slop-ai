@@ -352,6 +352,16 @@ textarea.l-clip-text:focus { outline: none; border-color: var(--l-accent-line); 
 .l-clip-mname { font-size: 13.5px; font-weight: 600; color: var(--l-text); display: block; }
 .l-clip-reason { font-size: 11.5px; color: var(--l-dim); display: block; margin-top: 2px; line-height: 1.4; }
 .l-clip-status { margin: 6px 0 4px; }
+
+/* Full-panel clip reader (expand a clamped excerpt to read the whole thing). */
+.l-reader-scrim { align-items: stretch; }
+.l-reader { width: 100%; display: flex; flex-direction: column; background: var(--l-bg); min-height: 0; }
+.l-reader-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; border-bottom: 1px solid var(--l-border-soft); flex: 0 0 auto; }
+.l-reader-title { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-reader-src { padding: 9px 16px 0; font-size: 11.5px; word-break: break-all; }
+.l-reader-src .l-ilink { color: var(--l-accent-hi); }
+.l-reader-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; font-size: 13.5px; line-height: 1.65; color: var(--l-text); white-space: pre-wrap; word-break: break-word; }
+.l-reader-actions { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--l-border-soft); flex: 0 0 auto; flex-wrap: wrap; }
 .l-clip-fstatus { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--l-dim); padding: 5px 2px; }
 .l-clip-fstatus .ok { color: #5fd6a0; font-weight: 700; }
 .l-clip-fstatus .bad { color: var(--l-danger); font-weight: 700; }

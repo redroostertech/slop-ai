@@ -501,7 +501,7 @@ function wireCapturedHandlers(list) {
   $$('[data-file]', list).forEach((b) => b.addEventListener('click', () => openMatterPicker(b, b.dataset.file)));
   $$('[data-remember]', list).forEach((b) => b.addEventListener('click', () => rememberItem(b, b.dataset.remember)));
   $$('[data-del]', list).forEach((b) => b.addEventListener('click', () => deleteCaptured(b.dataset.del)));
-  $$('[data-view]', list).forEach((el) => key(el, () => viewClip(el.dataset.view)));
+  $$('[data-view]', list).forEach((el) => key(el, () => openReader(el.dataset.view)));
   $$('[data-open]', list).forEach((el) => key(el, () => { const u = el.dataset.open; if (/^https?:\/\//i.test(u)) chrome.tabs.create({ url: u }); }));
   $$('[data-openpage]', list).forEach((el) => key(el, () => openClipInPage(el.dataset.openpage)));
   $$('[data-openall]', list).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openGroupInPage(b.dataset.openall); }));
@@ -539,7 +539,7 @@ async function deleteCaptured(id) {
   const items = await getCapturedItems();
   const it = items.find((x) => String(x.id) === String(id));
   const label = it ? it.title : 'this item';
-  if (!window.confirm(`Delete “${label}” from Captured?\nThis removes it from this device.`)) return;
+  if (!window.confirm(`Delete “${label}” from Captured?\nThis removes it from this device.`)) return false;
   try {
     await dbDelete('conversations', id);
     // Clean up any summaries tied to this conversation (AI chats), like the legacy path.
@@ -549,12 +549,14 @@ async function deleteCaptured(id) {
     } catch { /* no summaries index or none for this item (e.g. a clip) */ }
     chrome.runtime.sendMessage({ type: 'DATA_CHANGED' }).catch(() => {});
     renderCaptured();
+    return true;
   } catch (err) {
     window.alert(`Couldn't delete: ${err.message}`);
+    return false;
   }
 }
 
-/** Open the full clipped text (reuses the clip review sheet, which shows + files it). */
+/** Open the clip in the filing review sheet (shows text + matter suggestions). */
 async function viewClip(id) {
   const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
   if (!it || !it._c) return;
@@ -562,6 +564,42 @@ async function viewClip(id) {
   // openClipReview reads clip.text/selection — normalize from the stored shape.
   const text = c.text || c.selection || c.messages?.[0]?.content || c.excerpt || '';
   openClipReview({ ...c, text });
+}
+
+/** Full clipped text (prefer the untruncated message content over the 240-char excerpt). */
+function clipFullText(it) {
+  const c = it?._c || {};
+  const fromMsgs = Array.isArray(c.messages) ? c.messages.map((m) => m && m.content).filter(Boolean).join('\n\n') : '';
+  return String(fromMsgs || c.text || c.selection || c.excerpt || '').trim();
+}
+
+/** Full-panel reader — read a whole captured item without leaving the panel. */
+async function openReader(id) {
+  const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
+  if (!it) return;
+  const canPage = /^https?:\/\//i.test(it.url);
+  $('#l-reader-title').textContent = it.title || 'Clip';
+  const src = $('#l-reader-src');
+  src.hidden = !canPage;
+  if (canPage) src.innerHTML = `<span class="l-ilink" id="l-reader-openpage" role="link" tabindex="0" title="Open the page with this highlighted">${esc(it.url)}</span>`;
+  $('#l-reader-body').textContent = clipFullText(it) || '(no text captured)';
+  $('#l-reader-actions').innerHTML =
+    `<button class="l-btn l-btn-primary" id="l-reader-file">Attach to matter</button>` +
+    `<button class="l-btn l-btn-ghost" id="l-reader-remember">Remember</button>` +
+    (canPage ? `<button class="l-btn l-btn-ghost" id="l-reader-page">Open in page ↗</button>` : '') +
+    `<span class="l-sp"></span>` +
+    `<button class="l-btn l-btn-ghost l-icobtn" id="l-reader-del" title="Delete from Captured" aria-label="Delete">${DEL_SVG}</button>`;
+  $('#l-reader-file')?.addEventListener('click', () => { closeReader(); viewClip(id); });
+  $('#l-reader-remember')?.addEventListener('click', (e) => rememberItem(e.currentTarget, id));
+  $('#l-reader-page')?.addEventListener('click', () => openClipInPage(id));
+  $('#l-reader-openpage')?.addEventListener('click', () => openClipInPage(id));
+  $('#l-reader-del')?.addEventListener('click', async () => { if (await deleteCaptured(id)) closeReader(); });
+  $('#l-reader-scrim').hidden = false;
+}
+
+function closeReader() {
+  const s = $('#l-reader-scrim');
+  if (s) s.hidden = true;
 }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */
@@ -954,6 +992,9 @@ function wireClipReview() {
   $('#l-clip-selection')?.addEventListener('click', (e) => clipCurrentSelection(e.currentTarget));
   const scrim = $('#l-clip-scrim');
   scrim?.addEventListener('click', (e) => { if (e.target === scrim) closeClipReview(); });
+  // Full-panel clip reader: back button + Esc to close.
+  $('#l-reader-close')?.addEventListener('click', closeReader);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#l-reader-scrim')?.hidden) closeReader(); });
   // The context-menu handler nudges an already-open panel to pick up its clip.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') {
