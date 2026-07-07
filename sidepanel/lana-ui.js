@@ -416,7 +416,11 @@ async function renderCaptured() {
   }
   const matters = await getMatters();
   list.innerHTML = filtered.map((it) => {
-    const clipText = it.kind === 'clip' ? String(it._c?.text || it._c?.selection || '').trim() : '';
+    // saveClip stores the clipped text in `excerpt` + `messages[0].content` (not
+    // `text`/`selection`). Read those, with legacy fallbacks.
+    const clipText = it.kind === 'clip'
+      ? String(it._c?.excerpt || it._c?.messages?.[0]?.content || it._c?.text || it._c?.selection || '').trim()
+      : '';
     const excerpt = clipText
       ? `<div class="l-iexcerpt" data-view="${esc(it.id)}" role="button" tabindex="0" title="View the full clip">${esc(clipText.slice(0, 220))}${clipText.length > 220 ? '…' : ''}</div>`
       : '';
@@ -478,7 +482,11 @@ async function deleteCaptured(id) {
 /** Open the full clipped text (reuses the clip review sheet, which shows + files it). */
 async function viewClip(id) {
   const it = (await getCapturedItems()).find((x) => String(x.id) === String(id));
-  if (it && it._c) openClipReview(it._c);
+  if (!it || !it._c) return;
+  const c = it._c;
+  // openClipReview reads clip.text/selection — normalize from the stored shape.
+  const text = c.text || c.selection || c.messages?.[0]?.content || c.excerpt || '';
+  openClipReview({ ...c, text });
 }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */
