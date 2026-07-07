@@ -515,26 +515,24 @@ async function rememberItem(anchor, cid) {
 
 async function openMatterPicker(anchor, cid) {
   const matters = await getMatters();
-  if (!matters.length) {
-    // Don't be a silent dead button — explain why there's nothing to file to.
-    if (!authState.authenticated) {
-      showView('settings');
-      flashStatus('Sign in to LANA to file captures to a matter.', true);
-    } else {
-      const prev = anchor.textContent;
-      anchor.textContent = 'No matters yet';
-      setTimeout(() => { anchor.textContent = prev; }, 1600);
-    }
+  // Unauthenticated → send them to sign in (there's nothing to file to yet).
+  if (!matters.length && !authState.authenticated) {
+    showView('settings');
+    flashStatus('Sign in to LANA to file captures to a matter.', true);
     return;
   }
-  // lightweight inline menu under the button
+  // lightweight inline menu under the button — ALWAYS shown when authed, with a
+  // clear empty-state row when the account has no matters (so it's never a silent
+  // dead button).
   const existing = $('#l-file-menu');
   if (existing) existing.remove();
   const menu = document.createElement('div');
   menu.id = 'l-file-menu';
   menu.className = 'l-menu';
   menu.style.cssText = 'position:fixed;z-index:60;max-width:280px';
-  menu.innerHTML = `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('');
+  menu.innerHTML = matters.length
+    ? `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('')
+    : `<div class="l-mhint">No matters in this account</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">Create a matter in LANA GPT — it’ll show up here to file into.</span></div>`;
   // Append INSIDE the shell — the shell has a very high z-index, so a body-level
   // popover (z-index:60) would render hidden behind it. position:fixed keeps it
   // viewport-anchored regardless of parent.
