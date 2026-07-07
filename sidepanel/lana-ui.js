@@ -459,8 +459,9 @@ async function rememberItem(anchor, cid) {
     return;
   }
   const it = (await getCapturedItems()).find((x) => String(x.id) === String(cid));
-  const fact = (window.prompt('Remember this fact:', it ? it.title : '') || '').trim();
+  let fact = (window.prompt('Remember this fact:', it ? it.title : '') || '').trim();
   if (!fact) return;
+  if (fact.length > 500) { fact = fact.slice(0, 500); flashStatus('Fact was long — trimmed to 500 characters.'); } // match backend cap, avoid a 422
   const matterId = await activeMatterId();
   const label = anchor.textContent;
   anchor.textContent = 'Remembering…';
