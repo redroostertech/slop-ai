@@ -1,0 +1,229 @@
+<title>LANA AI — Clip into a matter (real UI)</title>
+<style>
+/* ============================================================= */
+/*  REAL extension stylesheet (verbatim from sidepanel/lana-ui.css) */
+/* ============================================================= */
+.lana-shell{
+  --l-bg:#161616;--l-panel:#141416;--l-surface:#1e1f24;--l-surface-2:#26272d;--l-raised:#2c2d34;
+  --l-border:#2a2b31;--l-border-soft:#232429;--l-text:#f5f5f4;--l-dim:#a6a7ad;--l-faint:#74757c;
+  --l-accent:#3067ff;--l-accent-hi:#4d7cff;--l-accent-soft:rgba(48,103,255,0.15);--l-accent-line:rgba(48,103,255,0.6);
+  --l-ok:#35c07f;--l-ok-soft:rgba(53,192,127,0.13);--l-warn:#e0a326;--l-danger:#e5484d;
+  --l-claude:#d97757;--l-gpt:#10a37f;
+  --l-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  --l-mono:"SF Mono",ui-monospace,Menlo,monospace;--l-r:12px;
+  position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;
+  background:var(--l-bg);color:var(--l-text);font-family:var(--l-font);font-size:14px;-webkit-font-smoothing:antialiased;overflow:hidden;
+}
+.lana-shell *,.lana-shell *::before,.lana-shell *::after{box-sizing:border-box;margin:0;padding:0}
+.lana-shell [hidden]{display:none!important}
+.lana-shell .l-view{display:none;flex:1;min-height:0;flex-direction:column}
+.lana-shell .l-view.on{display:flex}
+.l-toolbar{display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--l-border-soft);flex:0 0 auto}
+.l-mark{width:24px;height:24px;border-radius:6px;flex:0 0 auto;display:block}
+.l-tname{font-size:14px;font-weight:650;letter-spacing:-0.01em}
+.l-sp{flex:1}
+.l-tbtn{width:30px;height:30px;border:none;border-radius:8px;background:transparent;color:var(--l-dim);cursor:pointer;display:grid;place-items:center}
+.l-tbtn.on{background:var(--l-surface-2);color:var(--l-accent-hi)}
+.l-subbar{display:flex;align-items:center;gap:9px;padding:10px 12px;flex:0 0 auto}
+.l-subbar h1{font-size:15px;font-weight:600;letter-spacing:-0.01em;flex:1}
+.l-scroll{flex:1;min-height:0;overflow-y:auto}
+.l-body{padding:8px 14px 20px;display:flex;flex-direction:column;gap:12px}
+.l-btn{font-family:var(--l-font);font-size:12.5px;font-weight:600;border-radius:8px;padding:8px 12px;cursor:pointer;border:1px solid transparent;color:var(--l-text)}
+.l-btn-ghost{background:var(--l-surface-2);color:var(--l-text);border-color:var(--l-border)}
+.l-btn-ghost.done{color:var(--l-ok);border-color:var(--l-ok-soft)}
+.l-lead{font-size:13px;color:var(--l-dim);line-height:1.5}
+.l-segbar{display:flex;gap:6px;padding:4px 14px 12px;flex-wrap:wrap}
+.l-seg{font-size:12px;font-weight:600;color:var(--l-faint);padding:6px 11px;border-radius:8px;cursor:pointer;background:transparent;border:none}
+.l-seg.on{background:var(--l-surface-2);color:var(--l-text)}
+.l-count{font-size:11px;font-weight:600;color:var(--l-faint);background:var(--l-surface-2);border:1px solid var(--l-border);border-radius:999px;padding:3px 9px}
+.l-item{background:var(--l-surface);border:1px solid var(--l-border-soft);border-radius:13px;padding:13px;margin-bottom:10px}
+.l-itop{display:flex;align-items:center;gap:9px}
+.l-sico{width:26px;height:26px;border-radius:7px;flex:0 0 auto;display:grid;place-items:center;font-family:var(--l-mono);font-size:12px;font-weight:700}
+.l-sico.clip{background:rgba(224,163,38,0.14);color:var(--l-warn)}
+.l-ititle{font-size:13.5px;font-weight:600;line-height:1.3;flex:1}
+.l-ilink{cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.l-icobtn{padding:7px 8px;color:var(--l-faint);display:inline-grid;place-items:center}
+.l-iexcerpt{margin:8px 0 2px;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--l-dim);background:var(--l-surface-2);border:1px solid var(--l-border-soft);border-radius:8px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.l-imeta{font-size:11px;color:var(--l-faint);margin-top:2px;font-weight:400}
+.l-actions{display:flex;align-items:center;gap:8px;margin-top:12px}
+.l-mtag{font-family:var(--l-font);font-weight:600;color:var(--l-accent-hi)}
+.l-filed{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#5fd6a0}
+.l-filed svg{color:var(--l-ok)}
+.l-emptynote{text-align:center;color:var(--l-faint);font-size:12.5px;line-height:1.6;padding:40px 24px}
+.lana-shell .markSVG rect{fill:#161616;stroke:#2c2d34}
+.lana-shell .markSVG path{stroke:#f5f5f4}
+
+/* ============================================================= */
+/*  Marketing frame + re-home the real panel into the scene       */
+/* ============================================================= */
+:root{
+  --ground:#0e0e10;--ink:#f5f5f4;--dim:#8a8b91;--faint:#63646b;
+  --blue:#3067ff;--blue-hi:#5b83ff;--green:#35c07f;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;--loop:9.6s;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1100px 640px at 74% 12%,rgba(48,103,255,.15),transparent 60%),
+    radial-gradient(720px 520px at 8% 98%,rgba(53,192,127,.07),transparent 60%),
+    var(--ground);
+  color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+  min-height:100%;display:grid;place-items:center;overflow:hidden;
+}
+.frame{width:min(96vw,1200px);aspect-ratio:16/9;position:relative;display:flex;flex-direction:column;padding:30px 40px 26px}
+.brand{display:flex;align-items:center;gap:12px}
+.bmark{width:32px;height:32px;border-radius:9px;display:block;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.wm{font-size:14px;font-weight:600;letter-spacing:.42em;padding-left:.42em}
+.kick{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+
+.stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;gap:26px;margin-top:12px}
+
+/* browser with a real-feeling research article */
+.browser{position:relative;width:560px;max-width:52%;height:88%;background:#fbfaf7;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55);animation:sceneIn var(--loop) both}
+.btop{height:36px;background:#eeece5;display:flex;align-items:center;gap:7px;padding:0 14px;border-bottom:1px solid #e1dfd6}
+.dot{width:9px;height:9px;border-radius:50%;background:#d2d0c6}
+.urlbar{margin-left:12px;height:18px;flex:1;max-width:280px;background:#fff;border-radius:9px;border:1px solid #e1dfd6;display:flex;align-items:center;padding:0 10px;font-family:var(--mono);font-size:10px;color:#9a978c}
+.doc{padding:26px 28px;color:#2a2a2c}
+.doc .kicker{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:#a08a4a;text-transform:uppercase}
+.doc h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:9px 0 14px;color:#1c1c1e}
+.doc p{font-size:12.5px;line-height:1.72;color:#54524e;margin-bottom:11px}
+.passage{position:relative;padding:3px 5px;margin:-3px -5px;border-radius:5px}
+.passage b{color:#2a2a2c;font-weight:600}
+.selhl{position:absolute;inset:0;border-radius:5px;background:rgba(48,103,255,.20);border:1px solid rgba(48,103,255,.5);transform-origin:left center;transform:scaleX(0);animation:sweep var(--loop) both}
+.cmenu{position:absolute;left:40px;top:calc(100% + 8px);display:flex;align-items:center;gap:9px;background:#17181c;color:#f5f5f4;font-family:var(--sans);font-size:12.5px;font-weight:600;padding:9px 13px;border-radius:9px;white-space:nowrap;box-shadow:0 16px 40px rgba(0,0,0,.5);border:1px solid #2c2d34;opacity:0;transform:translateY(6px) scale(.96);animation:cmenu var(--loop) both;z-index:6}
+.cmenu .sc{color:var(--blue-hi)}
+.cmenu .kbd{font-family:var(--mono);font-size:10px;color:#63646b}
+.cursor{position:absolute;left:30%;top:44%;z-index:8;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));animation:cursor var(--loop) both}
+
+/* flying clip */
+.fly{position:absolute;left:44%;top:50%;width:190px;padding:11px 13px;border-radius:11px;background:linear-gradient(180deg,#20222a,#191a20);border:1px solid var(--blue);box-shadow:0 22px 55px rgba(48,103,255,.3);opacity:0;transform:scale(.7);z-index:9;animation:fly var(--loop) both}
+.fly .ft{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--blue-hi);margin-bottom:7px}
+.fly .fl{height:6px;border-radius:4px;background:#3a3c45;margin-bottom:6px}
+.fly .fl.b{width:82%}.fly .fl.c{width:58%;margin-bottom:0}
+
+/* device holding the REAL panel */
+.device{position:relative;width:372px;height:96%;border-radius:20px;overflow:hidden;background:var(--l-bg);box-shadow:0 34px 90px rgba(0,0,0,.6),0 0 0 1px #26272d;animation:sceneIn var(--loop) both;animation-delay:.1s}
+.device .chrome{height:34px;display:flex;align-items:center;gap:9px;padding:0 13px;background:#1b1b1d;border-bottom:1px solid #26272d}
+.device .chrome .ci{font-size:12px;font-weight:600;color:#f5f5f4;letter-spacing:-.01em}
+.device .chrome .cr{margin-left:auto;display:flex;gap:12px;color:#74757c;font-size:13px}
+/* re-home the fixed real shell into the device box */
+.device .lana-shell{position:absolute;inset:34px 0 0 0;z-index:1}
+
+.count-wrap{position:relative;display:inline-grid}
+.count-wrap .c0,.count-wrap .c1{grid-area:1/1}
+.count-wrap .c1{animation:c1 var(--loop) both}
+.count-wrap .c0{animation:c0 var(--loop) both}
+
+/* the captured card animates in */
+#capcard{opacity:0;transform:translateY(12px);animation:cardIn var(--loop) both}
+.emptyfade{animation:emptyOut var(--loop) both}
+.act-wrap{position:relative;min-height:34px}
+.act-default,.act-filed{position:absolute;inset:0;display:flex;align-items:center;gap:8px}
+.act-default{animation:actOut var(--loop) both}
+.act-filed{opacity:0;animation:actIn var(--loop) both}
+
+.tagline{position:absolute;left:40px;bottom:22px;max-width:56%;opacity:0;transform:translateY(8px);animation:tag var(--loop) both}
+.tagline h1{font-size:25px;font-weight:680;letter-spacing:-.02em;line-height:1.1;text-wrap:balance}
+.tagline h1 .b{color:var(--blue-hi)}
+.tagline p{margin-top:7px;font-size:13px;color:var(--dim)}
+
+/* ---- shared 9.6s timeline ---- */
+@keyframes sceneIn{0%{opacity:0;transform:translateY(10px)}5%,93%{opacity:1;transform:none}100%{opacity:0}}
+@keyframes cursor{0%,8%{left:30%;top:44%}18%{left:26%;top:41%}25%{left:58%;top:52%}33%{left:20%;top:68%}38%{left:20%;top:68%}50%{left:44%;top:50%}93%,100%{left:44%;top:50%;opacity:0}}
+@keyframes sweep{0%,12%{transform:scaleX(0)}24%,93%{transform:scaleX(1)}100%{opacity:0}}
+@keyframes cmenu{0%,25%{opacity:0;transform:translateY(6px) scale(.96)}31%,46%{opacity:1;transform:translateY(0) scale(1)}52%,100%{opacity:0}}
+@keyframes fly{0%,46%{opacity:0;left:44%;top:50%;transform:scale(.7)}50%{opacity:1;transform:scale(1)}62%{opacity:1;left:66%;top:34%;transform:scale(.9) rotate(-3deg)}70%{opacity:1;left:82%;top:40%;transform:scale(.55)}73%,100%{opacity:0}}
+@keyframes emptyOut{0%,66%{opacity:1}72%,100%{opacity:0}}
+@keyframes cardIn{0%,70%{opacity:0;transform:translateY(12px)}77%,93%{opacity:1;transform:none}100%{opacity:0}}
+@keyframes c0{0%,70%{opacity:1}74%,100%{opacity:0}}
+@keyframes c1{0%,72%{opacity:0}77%,100%{opacity:1}}
+@keyframes actOut{0%,80%{opacity:1}85%,100%{opacity:0}}
+@keyframes actIn{0%,81%{opacity:0}87%,93%{opacity:1}100%{opacity:0}}
+@keyframes tag{0%,74%{opacity:0;transform:translateY(8px)}82%,94%{opacity:1;transform:none}100%{opacity:0}}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important}
+  .selhl{transform:scaleX(1)}.fly,.cursor,.cmenu{opacity:0}
+  .emptyfade{display:none}#capcard{opacity:1;transform:none}
+  .act-default{opacity:0}.act-filed{opacity:1}.count-wrap .c0{opacity:0}.count-wrap .c1{opacity:1}
+}
+</style>
+
+<div class="frame">
+  <div class="brand">
+    <svg class="bmark" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="26" fill="#161616"/><g fill="none" stroke="#f5f5f4" stroke-width="7" stroke-linecap="square"><path d="M24,46 L24,24 L46,24"/><path d="M76,54 L76,76 L54,76"/></g></svg>
+    <span class="wm">L A N A&nbsp;&nbsp;A I</span>
+    <span class="kick">the actual product</span>
+  </div>
+
+  <div class="stage">
+    <!-- research article -->
+    <div class="browser">
+      <div class="btop"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">law.justia.com/codes/georgia</span></div>
+      <div class="doc">
+        <div class="kicker">Ga. Code · Title 53</div>
+        <h2>§ 53-12-243. Trustee's duty to inform</h2>
+        <p>A trustee shall keep the qualified beneficiaries of the trust reasonably informed about the administration of the trust and of the material facts necessary for them to protect their interests.</p>
+        <p class="passage">
+          <span class="selhl"></span>
+          Under the 2019 amendment, the duty to inform <b>extends to remainder beneficiaries</b>, not only current beneficiaries, whenever a material change affects the trust corpus.
+        </p>
+        <p>Absent a contrary provision, the trustee shall respond to a beneficiary's request for information within a reasonable time.</p>
+        <div class="cmenu"><span class="sc">✂</span> Clip selection to LANA <span class="kbd">⌘⇧L</span></div>
+      </div>
+      <div class="cursor"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 20 5 3z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
+    </div>
+
+    <!-- flying clip -->
+    <div class="fly"><div class="ft">CLIP</div><div class="fl"></div><div class="fl b"></div><div class="fl c"></div></div>
+
+    <!-- the REAL LANA panel -->
+    <div class="device">
+      <div class="chrome"><span class="ci">LANA AI</span><span class="cr">⤢ ✕</span></div>
+      <div class="lana-shell">
+        <section class="l-view on" data-lview="captured">
+          <div class="l-subbar">
+            <button class="l-tbtn" title="Back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <h1>Captured</h1>
+            <span class="l-count count-wrap"><span class="c0">0</span><span class="c1">1</span></span>
+            <span class="l-sp"></span>
+            <button class="l-tbtn" title="Clip the current selection"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg></button>
+            <button class="l-tbtn" title="How to clip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
+          </div>
+          <div class="l-segbar">
+            <button class="l-seg on">All</button><button class="l-seg">AI chats</button><button class="l-seg">Clips</button><button class="l-seg">Imports</button>
+          </div>
+          <p class="l-lead" style="padding:0 16px 10px;margin:0">Everything you clip or capture lands here, private and on your device. File it to a matter to make it part of your work.</p>
+          <div class="l-scroll"><div class="l-body">
+            <div class="l-emptynote emptyfade">Nothing captured yet.<br>Clip text from <b>any</b> web page, and your ChatGPT / Claude / Gemini chats are captured automatically as you browse.</div>
+            <div class="l-item" id="capcard">
+              <div class="l-itop">
+                <span class="l-sico clip">✂</span>
+                <div class="l-ititle"><span class="l-ilink">§ 53-12-243. Trustee's duty to inform<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></span><div class="l-imeta">Clipped · just now</div></div>
+              </div>
+              <div class="l-iexcerpt">Under the 2019 amendment, the duty to inform extends to remainder beneficiaries, not only current beneficiaries, whenever a material change affects the trust corpus.</div>
+              <div class="l-actions act-wrap">
+                <div class="act-default">
+                  <button class="l-btn l-btn-ghost l-icobtn" aria-label="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>
+                  <span class="l-sp"></span>
+                  <button class="l-btn l-btn-ghost">Remember</button>
+                  <button class="l-btn l-btn-ghost">Attach to matter ▾</button>
+                </div>
+                <div class="act-filed">
+                  <span class="l-filed"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 12 2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Filed to <span class="l-mtag">@Johnson Estate Plan</span></span>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="tagline">
+    <h1>Clip anything into <span class="b">your matters</span>.</h1>
+    <p>The real extension. Select on any page and it becomes grounded, private context.</p>
+  </div>
+</div>
