@@ -210,7 +210,8 @@
       </div>
     </section>
 
-  </div>
+  <!-- Overlays live INSIDE .lana-shell so they inherit its design tokens
+       (--l-bg etc. are scoped to .lana-shell) and its stacking context. -->
 
   <!-- New Playbook bottom sheet -->
   <div class="l-scrim" id="l-newpb-scrim" hidden>
@@ -252,6 +253,7 @@
       <div class="l-reader-actions" id="l-reader-actions"></div>
     </div>
   </div>
+  </div><!-- /.lana-shell -->
 
   <!-- ===== VIEW: Dashboard ===== -->
   <section id="view-dashboard">

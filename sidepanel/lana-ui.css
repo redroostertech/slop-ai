@@ -320,9 +320,9 @@
 .l-kbd { font-family: var(--l-mono); font-size: 11px; background: #0e2a17; color: #5fd6a0; border: 1px solid #1c5334; border-radius: 5px; padding: 1px 5px; }
 
 /* ========================== Scrim + bottom sheet ======================= */
-/* Above .lana-shell (which sits at a very high z-index to cover legacy content) —
-   these scrims live OUTSIDE the shell, so they must beat it to be visible. */
-.l-scrim { position: fixed; inset: 0; background: rgba(6,6,7,0.62); display: flex; align-items: flex-end; z-index: 2147483200; }
+/* Scrims live INSIDE .lana-shell (so they inherit the design tokens); z-index here
+   is relative to the shell's own content — above the toolbar/menus. */
+.l-scrim { position: fixed; inset: 0; background: rgba(6,6,7,0.62); display: flex; align-items: flex-end; z-index: 100; }
 .l-scrim[hidden] { display: none; }
 .l-sheet { width: 100%; background: var(--l-surface); border: 1.5px solid var(--l-accent-line); border-radius: 20px 20px 0 0; box-shadow: 0 -10px 50px rgba(0,0,0,0.5); padding: 22px 20px 20px; }
 .l-grab { width: 36px; height: 5px; border-radius: 3px; background: #3a3b42; margin: 0 auto 18px; }
