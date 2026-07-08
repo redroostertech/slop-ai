@@ -689,7 +689,10 @@ async function rememberItem(anchor, cid) {
     return;
   }
   const it = (await getCapturedItems()).find((x) => String(x.id) === String(cid));
-  let fact = (window.prompt('Remember this fact:', it ? it.title : '') || '').trim();
+  // Prefill with the clip's CONTENT (not just its title) so "Remember" stores the
+  // real text by default; the prompt stays editable to trim it to a salient fact.
+  const preset = it ? (it.kind === 'clip' ? (clipFullText(it) || it.title) : it.title) : '';
+  let fact = (window.prompt('Save to memory (edit to a short fact if you like):', preset) || '').trim();
   if (!fact) return;
   if (fact.length > 500) { fact = fact.slice(0, 500); flashStatus('Fact was long — trimmed to 500 characters.'); } // match backend cap, avoid a 422
   const matterId = await activeMatterId();
