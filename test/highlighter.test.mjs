@@ -1,6 +1,6 @@
 // Unit tests for lib/highlighter.js pure matching. Run: node test/highlighter.test.mjs
 import assert from 'node:assert';
-import { normalize, flatten, locate, locateAll } from '../lib/highlighter.js';
+import { normalize, flatten, locate, locateAll, segmentsOf } from '../lib/highlighter.js';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -72,6 +72,26 @@ t('locateAll: returns only the matches', () => {
   const { flat, map } = flatten([{ text: 'alpha beta gamma delta epsilon zeta' }]);
   const res = locateAll(flat, map, ['beta gamma', 'not here anywhere', 'delta epsilon']);
   assert.equal(res.length, 2);
+});
+
+t('normalize: folds smart apostrophe/quote/dash to ASCII', () => {
+  assert.equal(normalize('brands’ social — grow'), "brands' social - grow");
+});
+
+t('locate: a smart-apostrophe clip matches a plain-apostrophe page (and vice versa)', () => {
+  // page uses a plain apostrophe; clip captured a smart one
+  const { flat, map } = flatten([{ text: "Manage all your brands' social networks" }]);
+  const loc = locate(flat, map, 'Manage all your brands’ social networks');
+  assert.ok(loc, 'smart vs plain apostrophe should still match');
+});
+
+t('segmentsOf: splits a run-on list on 2+ spaces into items', () => {
+  const clip = 'Manage 1 brand   Manage all your brands social networks   Schedule up to 20 posts';
+  assert.deepEqual(segmentsOf(clip), [
+    'Manage 1 brand',
+    'Manage all your brands social networks',
+    'Schedule up to 20 posts',
+  ]);
 });
 
 console.log(`\nhighlighter.js: ${passed}/${passed} passed`);
