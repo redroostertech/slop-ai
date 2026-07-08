@@ -110,6 +110,7 @@ body{
 .device .chrome .cr{margin-left:auto;display:flex;gap:12px;color:#74757c;font-size:13px}
 /* re-home the fixed real shell into the device box */
 .device .lana-shell{position:absolute;inset:34px 0 0 0;z-index:1}
+.device .l-body{position:relative}
 
 .count-wrap{position:relative;display:inline-grid}
 .count-wrap .c0,.count-wrap .c1{grid-area:1/1}
@@ -118,13 +119,14 @@ body{
 
 /* the captured card animates in */
 #capcard{opacity:0;transform:translateY(12px);animation:cardIn var(--loop) both}
-.emptyfade{animation:emptyOut var(--loop) both}
+/* empty note overlays (absolute) so it never pushes the landing card off-screen */
+.emptyfade{position:absolute;left:0;right:0;top:18px;animation:emptyOut var(--loop) both}
 .act-wrap{position:relative;min-height:34px}
 .act-default,.act-filed{position:absolute;inset:0;display:flex;align-items:center;gap:8px}
 .act-default{animation:actOut var(--loop) both}
 .act-filed{opacity:0;animation:actIn var(--loop) both}
 
-.tagline{position:absolute;left:40px;bottom:22px;max-width:56%;opacity:0;transform:translateY(8px);animation:tag var(--loop) both}
+.tagline{margin:16px 0 0;max-width:76%;opacity:0;transform:translateY(8px);animation:tag var(--loop) both}
 .tagline h1{font-size:25px;font-weight:680;letter-spacing:-.02em;line-height:1.1;text-wrap:balance}
 .tagline h1 .b{color:var(--blue-hi)}
 .tagline p{margin-top:7px;font-size:13px;color:var(--dim)}
