@@ -681,33 +681,51 @@ async function activeMatterId() {
  */
 async function rememberItem(anchor, cid) {
   if (!(await memoryEnabled())) {
+    showView('settings');
     flashStatus('Memory is off — turn it on in Settings to remember facts.', true);
     return;
   }
   if (!authState.authenticated) {
+    showView('settings');
     flashStatus('Authorize LANA GPT in Settings to remember facts.', true);
     return;
   }
   const it = (await getCapturedItems()).find((x) => String(x.id) === String(cid));
-  // Prefill with the clip's CONTENT (not just its title) so "Remember" stores the
-  // real text by default; the prompt stays editable to trim it to a salient fact.
+  // Prefill with the clip's CONTENT (not just its title) so the default is the real
+  // text; the styled sheet stays editable to trim it to a salient fact.
   const preset = it ? (it.kind === 'clip' ? (clipFullText(it) || it.title) : it.title) : '';
-  let fact = (window.prompt('Save to memory (edit to a short fact if you like):', preset) || '').trim();
-  if (!fact) return;
-  if (fact.length > 500) { fact = fact.slice(0, 500); flashStatus('Fact was long — trimmed to 500 characters.'); } // match backend cap, avoid a 422
-  const matterId = await activeMatterId();
-  const label = anchor.textContent;
-  anchor.textContent = 'Remembering…';
-  anchor.disabled = true;
+  _rememberMatterId = await activeMatterId();
+  const ta = $('#l-remember-text');
+  ta.value = String(preset || '').slice(0, 500);
+  const cap = $('#l-remember-cap');
+  const upd = () => { cap.textContent = `${ta.value.length}/500`; };
+  ta.oninput = upd; upd();
+  const st = $('#l-remember-status'); st.textContent = ''; st.style.color = '';
+  $('#l-remember-scrim').hidden = false;
+  ta.focus(); ta.setSelectionRange(0, 0);
+}
+
+let _rememberMatterId = null;
+function closeRememberSheet() { const s = $('#l-remember-scrim'); if (s) s.hidden = true; }
+
+async function saveRememberSheet() {
+  const ta = $('#l-remember-text');
+  const st = $('#l-remember-status');
+  const fact = (ta.value || '').trim().slice(0, 500);
+  if (!fact) { st.style.color = 'var(--l-danger)'; st.textContent = 'Enter something to remember.'; return; }
+  const btn = $('#l-remember-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const res = await chrome.runtime.sendMessage({ type: 'LANA_SEND_MEMORY', fact, matterId });
+    const res = await chrome.runtime.sendMessage({ type: 'LANA_SEND_MEMORY', fact, matterId: _rememberMatterId });
     if (res && res.error) throw new Error(res.error);
-    anchor.textContent = 'Remembered ✓';
-    flashStatus(matterId ? 'Saved to matter memory.' : 'Saved to your memory.');
+    st.style.color = 'var(--l-ok)';
+    st.textContent = _rememberMatterId ? 'Saved to matter memory ✓' : 'Saved to your memory ✓';
+    setTimeout(closeRememberSheet, 850);
   } catch (err) {
-    anchor.textContent = label;
-    anchor.disabled = false;
-    flashStatus(`Couldn’t remember: ${err.message}`, true);
+    st.style.color = 'var(--l-danger)';
+    st.textContent = `Couldn’t save: ${err.message}`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save to memory';
   }
 }
 
@@ -1049,6 +1067,14 @@ function wireClipReview() {
   // Full-panel clip reader: back button + Esc to close.
   $('#l-reader-close')?.addEventListener('click', closeReader);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#l-reader-scrim')?.hidden) closeReader(); });
+  // Save-to-memory sheet.
+  $('#l-remember-save')?.addEventListener('click', saveRememberSheet);
+  $('#l-remember-cancel')?.addEventListener('click', closeRememberSheet);
+  const rmScrim = $('#l-remember-scrim');
+  rmScrim?.addEventListener('click', (e) => { if (e.target === rmScrim) closeRememberSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !rmScrim?.hidden) closeRememberSheet(); });
+  // Cmd/Ctrl+Enter saves from the textarea.
+  $('#l-remember-text')?.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveRememberSheet(); } });
   // The context-menu handler nudges an already-open panel to pick up its clip.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') {
