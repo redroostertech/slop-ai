@@ -132,6 +132,7 @@
 .l-btn-primary:hover { background: var(--l-accent-hi); }
 .l-btn-ghost { background: var(--l-surface-2); color: var(--l-text); border-color: var(--l-border); }
 .l-btn-ghost:hover { background: var(--l-raised); }
+.l-btn-ghost.done { color: var(--l-ok); border-color: var(--l-ok-soft); } /* remembered / filed state */
 .l-btn-danger { background: transparent; border-color: rgba(229,72,77,0.35); color: #f0888b; }
 .l-btn-danger:hover { background: rgba(229,72,77,0.1); }
 .l-btn-dashed { background: transparent; border: 1px dashed var(--l-border); color: var(--l-dim); }

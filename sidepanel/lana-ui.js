@@ -15,7 +15,7 @@
  */
 
 import { getEnv, defaultInstance } from '../lib/env.js';
-import { dbGetAll, dbCount, dbDelete, dbGetByIndex } from '../lib/db.js';
+import { dbGetAll, dbCount, dbDelete, dbGetByIndex, dbGet, dbPut } from '../lib/db.js';
 import { listAccounts, setActiveAccount, removeAccount } from '../lib/accounts.js';
 import { connectViaDesktop } from '../lib/native-bridge.js';
 import { notifyDone, requestNotifPermission } from '../lib/notify.js';
@@ -457,7 +457,13 @@ function excerptHtml(it, cls) {
 }
 
 function capturedActionsHtml(it, extra) {
-  return `<button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete">${DEL_SVG}</button>${extra || ''}<span class="l-sp"></span><button class="l-btn l-btn-ghost" data-remember="${esc(it.id)}">Remember</button><button class="l-btn l-btn-ghost" data-file="${esc(it.id)}">Attach to matter ▾</button>`;
+  const remembered = !!(it._c && Array.isArray(it._c.lanaMemories) && it._c.lanaMemories.length);
+  const filedN = (it._c && Array.isArray(it._c.lanaFilings)) ? it._c.lanaFilings.length : 0;
+  const rememberLabel = remembered ? 'Remembered ✓' : 'Remember';
+  const fileLabel = filedN ? `Filed · ${filedN} ▾` : 'Attach to matter ▾';
+  return `<button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete">${DEL_SVG}</button>${extra || ''}<span class="l-sp"></span>`
+    + `<button class="l-btn l-btn-ghost${remembered ? ' done' : ''}" data-remember="${esc(it.id)}" title="${remembered ? 'Already in memory — click to add another' : 'Save to memory'}">${esc(rememberLabel)}</button>`
+    + `<button class="l-btn l-btn-ghost${filedN ? ' done' : ''}" data-file="${esc(it.id)}">${esc(fileLabel)}</button>`;
 }
 
 function capturedSingleHtml(it) {
@@ -695,18 +701,47 @@ async function rememberItem(anchor, cid) {
   // text; the styled sheet stays editable to trim it to a salient fact.
   const preset = it ? (it.kind === 'clip' ? (clipFullText(it) || it.title) : it.title) : '';
   _rememberMatterId = await activeMatterId();
+  _rememberCid = String(cid);
   const ta = $('#l-remember-text');
   ta.value = String(preset || '').slice(0, 500);
   const cap = $('#l-remember-cap');
   const upd = () => { cap.textContent = `${ta.value.length}/500`; };
   ta.oninput = upd; upd();
-  const st = $('#l-remember-status'); st.textContent = ''; st.style.color = '';
+  const st = $('#l-remember-status');
+  // Dedup awareness: if this capture was already remembered, say so up front.
+  const already = (it && it._c && Array.isArray(it._c.lanaMemories)) ? it._c.lanaMemories.length : 0;
+  if (already) { st.style.color = 'var(--l-warn)'; st.textContent = `Already saved to memory ${already}× — saving again adds another.`; }
+  else { st.textContent = ''; st.style.color = ''; }
   $('#l-remember-scrim').hidden = false;
   ta.focus(); ta.setSelectionRange(0, 0);
 }
 
 let _rememberMatterId = null;
+let _rememberCid = null;
 function closeRememberSheet() { const s = $('#l-remember-scrim'); if (s) s.hidden = true; }
+
+/** Record on the capture (IndexedDB) which memory/matter it pushed to — powers the
+ *  "Remembered ✓" / "Filed to X" state, dedup, and (later) cascade delete. */
+async function markRemembered(cid, fact, memoryId) {
+  try {
+    const rec = await dbGet('conversations', String(cid));
+    if (!rec) return;
+    rec.lanaMemories = Array.isArray(rec.lanaMemories) ? rec.lanaMemories : [];
+    rec.lanaMemories.push({ fact: String(fact).slice(0, 240), at: Date.now(), id: memoryId || null });
+    await dbPut('conversations', rec);
+  } catch { /* best-effort */ }
+}
+async function markFiled(cid, matterId, matterName) {
+  try {
+    const rec = await dbGet('conversations', String(cid));
+    if (!rec) return;
+    rec.lanaFilings = Array.isArray(rec.lanaFilings) ? rec.lanaFilings : [];
+    if (!rec.lanaFilings.some((f) => String(f.matterId) === String(matterId))) {
+      rec.lanaFilings.push({ matterId: String(matterId), matterName: matterName || '', at: Date.now() });
+      await dbPut('conversations', rec);
+    }
+  } catch { /* best-effort */ }
+}
 
 async function saveRememberSheet() {
   const ta = $('#l-remember-text');
@@ -718,6 +753,8 @@ async function saveRememberSheet() {
   try {
     const res = await chrome.runtime.sendMessage({ type: 'LANA_SEND_MEMORY', fact, matterId: _rememberMatterId });
     if (res && res.error) throw new Error(res.error);
+    if (_rememberCid) await markRemembered(_rememberCid, fact, res && res.id);
+    if (currentView === 'captured') renderCaptured(); // reflect "Remembered ✓"
     st.style.color = 'var(--l-ok)';
     st.textContent = _rememberMatterId ? 'Saved to matter memory ✓' : 'Saved to your memory ✓';
     setTimeout(closeRememberSheet, 850);
@@ -847,6 +884,7 @@ async function fileToMatter(cid, matterId, anchor) {
     card.querySelector('.l-actions').innerHTML =
       `<span class="l-filed"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 12 2 2 4-4"/></svg>Filed to <span class="l-mtag">@${esc(name)}</span></span>`;
     notifyDone({ id: 'lana-filed', title: 'Filed to LANA', message: `“${it.title}” saved to @${name}` });
+    await markFiled(cid, matterId, name); // persist "Filed to X" state (dedup + cascade)
   } catch (err) {
     anchor.textContent = 'Attach to matter ▾';
     anchor.disabled = false;
