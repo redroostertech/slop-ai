@@ -584,7 +584,7 @@ async function deleteCaptured(id) {
   const items = await getCapturedItems();
   const it = items.find((x) => String(x.id) === String(id));
   const label = it ? it.title : 'this item';
-  if (!window.confirm(`Delete “${label}” from Captured?\nThis removes it from this device.`)) return false;
+  if (!(await confirmSheet({ title: 'Delete from Captured?', message: `“${label}” will be removed from this device.`, confirmLabel: 'Delete', danger: true }))) return false;
   try {
     await dbDelete('conversations', id);
     // Clean up any summaries tied to this conversation (AI chats), like the legacy path.
@@ -596,7 +596,7 @@ async function deleteCaptured(id) {
     renderCaptured();
     return true;
   } catch (err) {
-    window.alert(`Couldn't delete: ${err.message}`);
+    await confirmSheet({ title: "Couldn't delete", message: err.message, confirmLabel: 'OK', cancelLabel: null });
     return false;
   }
 }
@@ -727,6 +727,52 @@ async function saveRememberSheet() {
   } finally {
     btn.disabled = false; btn.textContent = 'Save to memory';
   }
+}
+
+/* ---- Reusable styled modal (confirm / alert / prompt) — replaces native dialogs ---- */
+let _modalResolve = null;
+let _modalDismiss = false;
+function closeModal(result) {
+  const s = $('#l-modal-scrim');
+  if (s) s.hidden = true;
+  const r = _modalResolve;
+  _modalResolve = null;
+  if (r) r(result);
+}
+/** Styled confirm / alert (pass cancelLabel:null for an alert). → Promise<boolean>. */
+function confirmSheet({ title = 'Are you sure?', message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise((resolve) => {
+    _modalResolve = resolve; _modalDismiss = false;
+    $('#l-modal-title').textContent = title;
+    const msg = $('#l-modal-msg'); msg.textContent = message; msg.hidden = !message;
+    $('#l-modal-field').innerHTML = '';
+    const ok = $('#l-modal-ok'); ok.textContent = confirmLabel; ok.className = `l-btn l-btn-full ${danger ? 'l-btn-danger' : 'l-btn-primary'}`;
+    const cancel = $('#l-modal-cancel'); cancel.hidden = !cancelLabel; cancel.textContent = cancelLabel || 'Cancel';
+    ok.onclick = () => closeModal(true);
+    cancel.onclick = () => closeModal(false);
+    $('#l-modal-scrim').hidden = false;
+    ok.focus();
+  });
+}
+/** Styled text prompt. → Promise<string|null> (null = cancelled). */
+function promptSheet({ title = '', message = '', value = '', placeholder = '', multiline = false, confirmLabel = 'Save' } = {}) {
+  return new Promise((resolve) => {
+    _modalResolve = resolve; _modalDismiss = null;
+    $('#l-modal-title').textContent = title;
+    const msg = $('#l-modal-msg'); msg.textContent = message; msg.hidden = !message;
+    $('#l-modal-field').innerHTML = multiline
+      ? '<textarea class="l-clip-text" id="l-modal-input"></textarea>'
+      : '<input class="l-field" id="l-modal-input" style="width:100%">';
+    const input = $('#l-modal-input');
+    input.value = value; input.placeholder = placeholder; // set as properties — no HTML injection
+    const ok = $('#l-modal-ok'); ok.textContent = confirmLabel; ok.className = 'l-btn l-btn-primary l-btn-full';
+    const cancel = $('#l-modal-cancel'); cancel.hidden = false; cancel.textContent = 'Cancel';
+    ok.onclick = () => closeModal(input.value);
+    cancel.onclick = () => closeModal(null);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); closeModal(input.value); } });
+    $('#l-modal-scrim').hidden = false;
+    input.focus();
+  });
 }
 
 async function openMatterPicker(anchor, cid) {
@@ -1075,6 +1121,10 @@ function wireClipReview() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !rmScrim?.hidden) closeRememberSheet(); });
   // Cmd/Ctrl+Enter saves from the textarea.
   $('#l-remember-text')?.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveRememberSheet(); } });
+  // Reusable modal: backdrop + Esc dismiss (resolves the pending confirm/prompt).
+  const mScrim = $('#l-modal-scrim');
+  mScrim?.addEventListener('click', (e) => { if (e.target === mScrim) closeModal(_modalDismiss); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !mScrim?.hidden) closeModal(_modalDismiss); });
   // The context-menu handler nudges an already-open panel to pick up its clip.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'LANA_CLIP_REVIEW_READY') {
@@ -1286,14 +1336,14 @@ function wirePlaybookSheet() {
   $('#l-pb-new')?.addEventListener('click', open);
   $('#l-pb-new2')?.addEventListener('click', open);
   scrim?.addEventListener('click', (e) => { if (e.target === scrim) close(); });
-  $$('[data-lpb]').forEach((o) => o.addEventListener('click', () => {
+  $$('[data-lpb]').forEach((o) => o.addEventListener('click', async () => {
     const mode = o.dataset.lpb;
     close();
     if (mode === 'write') {
-      // Write-it: minimal prompt-based creation for v1 (full editor = Phase 4).
-      const name = window.prompt('Playbook name (used as /name):');
-      if (!name) return;
-      const steps = window.prompt('What should this playbook do?');
+      // Write-it: minimal styled-prompt creation for v1 (full editor = Phase 4).
+      const name = await promptSheet({ title: 'New playbook', message: 'Name (used as /name):', placeholder: 'e.g. draft-demand-letter', confirmLabel: 'Next' });
+      if (name == null || !name.trim()) return;
+      const steps = await promptSheet({ title: 'Playbook steps', message: 'What should this playbook do?', multiline: true, placeholder: 'Describe what LANA should do…', confirmLabel: 'Create' });
       if (steps == null) return;
       savePlaybook({ cmd: slug(name), desc: steps.slice(0, 80), src: 'Custom', steps });
     } else {
