@@ -769,7 +769,7 @@ async function handleFiles(fileList) {
   const sourceList = [...sources].map(s => sourceLabel(s)).join(', ');
   let msg = `Imported ${formatNumber(totalImported)} conversations from ${sourceList}.`;
   if (totalSkipped > 0) msg += ` Skipped ${formatNumber(totalSkipped)} duplicates.`;
-  if (projectGroupCount > 0) msg += ` Found ${projectGroupCount} project group${projectGroupCount > 1 ? 's' : ''} — rename them in Topics.`;
+  if (projectGroupCount > 0) msg += ` Found ${projectGroupCount} project group${projectGroupCount > 1 ? 's' : ''}. Rename them in Topics.`;
   if (claudeProjectCount > 0) msg += ` Created ${claudeProjectCount} Claude project topic${claudeProjectCount > 1 ? 's' : ''}.`;
   resultsText.textContent = msg;
   notifyDone({ id: 'lana-import', title: 'Import complete', message: `Imported ${formatNumber(totalImported)} conversations.` });
@@ -874,7 +874,7 @@ function filterConversations() {
     if (msgMin != null || msgMax != null) activeFilters.push(`${msgMin || 0}–${msgMax || '∞'} msgs`);
     if (dateFrom || dateTo) activeFilters.push(`${dateFrom || '…'}→${dateTo || '…'}`);
     summary.textContent = activeFilters.length > 0
-      ? `Showing ${formatNumber(filtered.length)} of ${formatNumber(allConversations.length)} — ${activeFilters.join(', ')}`
+      ? `Showing ${formatNumber(filtered.length)} of ${formatNumber(allConversations.length)} · ${activeFilters.join(', ')}`
       : `${formatNumber(filtered.length)} conversations`;
   }
 
@@ -1157,7 +1157,7 @@ function filterTopics() {
     if (q) activeFilters.push(`"${q}"`);
     if (sizeFilter !== 'all') activeFilters.push(sizeFilter);
     summary.textContent = activeFilters.length > 0
-      ? `Showing ${formatNumber(filtered.length)} of ${formatNumber(allTopics.length)} — ${activeFilters.join(', ')}`
+      ? `Showing ${formatNumber(filtered.length)} of ${formatNumber(allTopics.length)} · ${activeFilters.join(', ')}`
       : `${formatNumber(filtered.length)} topics`;
   }
 
@@ -1678,7 +1678,7 @@ lanaInstanceSaveBtn?.addEventListener('click', () => {
         lanaInstanceStatus,
         granted
           ? `Saved ${instance.label}. Access granted.`
-          : `Saved ${instance.label}, but host access was declined — connecting will fail until you grant it.`,
+          : `Saved ${instance.label}, but host access was declined. Connecting will fail until you grant it.`,
         granted ? 'success' : 'error'
       );
       lanaConnect.refresh();

@@ -129,7 +129,7 @@ function sendMessage() {
   // The agent action loop runs in lana-gpt (PRODUCT_BRIEF §11 Phase 3) and is
   // not live yet. Be honest about that rather than fake a response.
   const note = authState.authenticated
-    ? 'The agent loop (read · navigate · draft, with an approval gate) is landing in Phase 3. Your message was captured — grounding (<b>@matter</b> / <b>#file</b>) and playbooks come online first.'
+    ? 'The agent loop (read · navigate · draft, with an approval gate) is landing in Phase 3. Your message was captured. Grounding (<b>@matter</b> / <b>#file</b>) and playbooks come online first.'
     : 'Authorize LANA GPT in Settings to enable cloud reasoning. The agent action loop ships in Phase 3; until then you can capture, ground to matters, and run playbooks.';
   setTimeout(() => appendChat(`<div class="l-msg">${note}</div>`), 120);
 }
@@ -417,7 +417,7 @@ async function renderCaptured() {
   });
   $('#l-captured-count').textContent = `${items.length}`;
   if (!filtered.length) {
-    list.innerHTML = `<div class="l-emptynote">Nothing captured yet.<br>Clip text from <b>any</b> web page — and your ChatGPT / Claude / Gemini chats are captured automatically as you browse.<div style="margin-top:14px"><button class="l-btn l-btn-ghost" id="l-howto-clip-empty">▶ How to clip</button></div></div>`;
+    list.innerHTML = `<div class="l-emptynote">Nothing captured yet.<br>Clip text from <b>any</b> web page, and your ChatGPT / Claude / Gemini chats are captured automatically as you browse.<div style="margin-top:14px"><button class="l-btn l-btn-ghost" id="l-howto-clip-empty">▶ How to clip</button></div></div>`;
     $('#l-howto-clip-empty')?.addEventListener('click', openHowTo);
     return;
   }
@@ -463,7 +463,7 @@ function capturedActionsHtml(it, extra) {
   const rememberLabel = remembered ? 'Remembered ✓' : 'Remember';
   const fileLabel = filedN ? `Filed · ${filedN} ▾` : 'Attach to matter ▾';
   return `<button class="l-btn l-btn-ghost l-icobtn" data-del="${esc(it.id)}" title="Delete from Captured" aria-label="Delete">${DEL_SVG}</button>${extra || ''}<span class="l-sp"></span>`
-    + `<button class="l-btn l-btn-ghost${remembered ? ' done' : ''}" data-remember="${esc(it.id)}" title="${remembered ? 'Already in memory — click to add another' : 'Save to memory'}">${esc(rememberLabel)}</button>`
+    + `<button class="l-btn l-btn-ghost${remembered ? ' done' : ''}" data-remember="${esc(it.id)}" title="${remembered ? 'Already in memory, click to add another' : 'Save to memory'}">${esc(rememberLabel)}</button>`
     + `<button class="l-btn l-btn-ghost${filedN ? ' done' : ''}" data-file="${esc(it.id)}">${esc(fileLabel)}</button>`;
 }
 
@@ -719,7 +719,7 @@ async function activeMatterId() {
 async function rememberItem(anchor, cid) {
   if (!(await memoryEnabled())) {
     showView('settings');
-    flashStatus('Memory is off — turn it on in Settings to remember facts.', true);
+    flashStatus('Memory is off. Turn it on in Settings to remember facts.', true);
     return;
   }
   if (!authState.authenticated) {
@@ -741,7 +741,7 @@ async function rememberItem(anchor, cid) {
   const st = $('#l-remember-status');
   // Dedup awareness: if this capture was already remembered, say so up front.
   const already = (it && it._c && Array.isArray(it._c.lanaMemories)) ? it._c.lanaMemories.length : 0;
-  if (already) { st.style.color = 'var(--l-warn)'; st.textContent = `Already saved to memory ${already}× — saving again adds another.`; }
+  if (already) { st.style.color = 'var(--l-warn)'; st.textContent = `Already saved to memory ${already}×. Saving again adds another.`; }
   else { st.textContent = ''; st.style.color = ''; }
   $('#l-remember-scrim').hidden = false;
   ta.focus(); ta.setSelectionRange(0, 0);
@@ -870,7 +870,7 @@ async function openMatterPicker(anchor, cid) {
     ? `<div class="l-mhint">File to matter</div>` + matters.map((m) => `<div class="l-mrow" data-mid="${esc(m.id)}"><span class="l-mname plain">${esc(m.name)}</span>${m.meta ? `<span class="l-mdesc">${esc(m.meta)}</span>` : ''}</div>`).join('')
     : _lastMattersError
       ? `<div class="l-mhint">Couldn’t load matters</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">${esc(_lastMattersError)}</span></div>`
-      : `<div class="l-mhint">No matters in this account</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">Create a matter in LANA GPT — it’ll show up here to file into.</span></div>`;
+      : `<div class="l-mhint">No matters in this account</div><div class="l-mrow" style="cursor:default"><span class="l-mdesc">Create a matter in LANA GPT, and it’ll show up here to file into.</span></div>`;
   // Append INSIDE the shell — the shell has a very high z-index, so a body-level
   // popover (z-index:60) would render hidden behind it. position:fixed keeps it
   // viewport-anchored regardless of parent.
@@ -1070,7 +1070,7 @@ function renderClipList(authed) {
   if (!el) return;
   if (!clipMatters.length) {
     el.innerHTML = `<div class="l-emptynote" style="padding:12px 4px">${
-      authed ? 'No matters yet — create one in LANA GPT, or just save to Captured.'
+      authed ? 'No matters yet. Create one in LANA GPT, or just save to Captured.'
              : 'Authorize LANA GPT in Settings to file to a matter. You can still save to Captured.'
     }</div>`;
     updateClipFileBtn();
@@ -1106,7 +1106,7 @@ async function fileClipToSelected() {
   if (!currentClip) return;
   const ta = $('#l-clip-text');
   const text = (ta ? ta.value : '').trim().slice(0, MAX_CLIP);
-  if (!text) { setClipStatus('<div class="l-clip-fstatus"><span class="bad">✕</span> The clip is empty — nothing to file.</div>'); return; }
+  if (!text) { setClipStatus('<div class="l-clip-fstatus"><span class="bad">✕</span> The clip is empty. Nothing to file.</div>'); return; }
   const ids = [...clipSelected];
   if (!ids.length) return;
   const fileBtn = $('#l-clip-file');
@@ -1363,7 +1363,7 @@ function wireSettings() {
       agentPrefs = prefs; // cache only what actually persisted (notifyDone reads storage)
     } catch {
       t.classList.toggle('on'); // revert so the UI matches the unchanged stored state
-      flashStatus('Couldn’t save that setting — try again.', true);
+      flashStatus('Couldn’t save that setting. Try again.', true);
       return;
     }
     if (t.dataset.ltoggle === 'suggest' && currentView === HOME) renderSuggestStrip();
@@ -1481,7 +1481,7 @@ function showFirstRunError(err) {
   if (!w) return;
   const msg = (err && err.message) ? err.message : 'Authorization failed.';
   const hint = /could not be loaded|failed to fetch|reach/i.test(msg)
-    ? ` The LANA instance (${instanceUrlValue || 'not set'}) isn’t reachable — check it’s running / correct.`
+    ? ` The LANA instance (${instanceUrlValue || 'not set'}) isn’t reachable. Check it’s running / correct.`
     : '';
   w.style.color = 'var(--l-danger)';
   w.style.borderColor = 'rgba(229,72,77,0.35)';

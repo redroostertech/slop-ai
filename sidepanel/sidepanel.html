@@ -85,7 +85,7 @@
         <button class="l-seg" data-lseg="clips">Clips</button>
         <button class="l-seg" data-lseg="imports">Imports</button>
       </div>
-      <p class="l-lead" style="padding:0 16px 10px;margin:0">Everything you clip or capture lands here — private, on your device. File it to a matter to make it part of your work.</p>
+      <p class="l-lead" style="padding:0 16px 10px;margin:0">Everything you clip or capture lands here, private and on your device. File it to a matter to make it part of your work.</p>
       <div class="l-scroll"><div class="l-body" id="l-captured-list"></div></div>
     </section>
 
@@ -112,7 +112,7 @@
           <div class="l-card-head"><span class="l-eyebrow">LANA GPT</span><span class="l-chip off" id="l-set-chip"><span class="l-dot"></span>Not connected</span></div>
           <div id="l-set-account-connected" hidden>
             <div class="l-srow" style="border:none;padding:0;background:none">
-              <div><div class="st">Account</div><div class="sd" id="l-set-email">—</div><div class="l-connected" style="margin-top:7px"><span class="d"></span><span id="l-set-synced">Connected</span></div></div>
+              <div><div class="st">Account</div><div class="sd" id="l-set-email">Not signed in</div><div class="l-connected" style="margin-top:7px"><span class="d"></span><span id="l-set-synced">Connected</span></div></div>
             </div>
             <button class="l-btn l-btn-danger l-btn-full" id="l-set-disconnect" style="margin-top:12px">Disconnect</button>
           </div>
@@ -135,13 +135,13 @@
         <!-- AI Inference (local-first) -->
         <section class="l-card">
           <div class="l-card-head"><span class="l-eyebrow">AI Inference</span><span class="l-sub">Local first</span></div>
-          <p class="l-note">LANA answers on your device when it can, and calls on your account only when a question needs more power or your matter context. You don't pick a model — it routes automatically.</p>
+          <p class="l-note">LANA answers on your device when it can, and calls on your account only when a question needs more power or your matter context. You don't pick a model. It routes automatically.</p>
           <div class="l-tiers">
             <div class="l-tier active">
               <div class="l-rail"><div class="l-rank">1</div><div class="l-connector"></div></div>
               <div class="l-main">
                 <div class="l-name">On your device <span class="l-badge privacy">Private</span></div>
-                <div class="l-meta">Instant answers — nothing leaves your device</div>
+                <div class="l-meta">Instant answers. Nothing leaves your device</div>
                 <div class="l-state ready" id="l-tier-local"><span class="d l-live"></span>Active</div>
               </div>
             </div>
@@ -203,7 +203,7 @@
         <div class="l-center">
           <svg class="l-bigmark markSVG" viewBox="0 0 100 100" style="width:62px;height:62px;border-radius:16px;margin-bottom:26px"><rect width="100" height="100" rx="22"/><g fill="none" stroke-width="7" stroke-linecap="square"><path d="M24,46 L24,24 L46,24"/><path d="M76,54 L76,76 L54,76"/></g></svg>
           <h2>Authorize LANA GPT</h2>
-          <p>We opened a LANA GPT sign-in window. Sign in if needed, then approve access — this panel updates automatically.</p>
+          <p>We opened a LANA GPT sign-in window. Sign in if needed, then approve access, and this panel updates automatically.</p>
           <div class="l-waiting"><span class="l-spin"></span>Waiting for authorization…</div>
           <div style="margin-top:22px;font-size:13px;color:var(--l-dim)">Window didn't open? <a href="#" id="l-fr-reopen" style="color:var(--l-accent-hi);font-weight:600">Reopen it</a></div>
           <button class="l-btn" id="l-fr-skip" style="background:none;color:var(--l-faint);margin-top:6px">Skip for now</button>
@@ -288,7 +288,7 @@
     <div class="l-sheet">
       <div class="l-grab"></div>
       <h2>How to clip</h2>
-      <p class="desc">Save text from <b>any</b> web page into LANA — then file it to a matter or remember it. (Your ChatGPT / Claude / Gemini chats are captured automatically as you browse.)</p>
+      <p class="desc">Save text from <b>any</b> web page into LANA, then file it to a matter or remember it. (Your ChatGPT / Claude / Gemini chats are captured automatically as you browse.)</p>
       <div class="l-howto-demo" aria-hidden="true">
         <div class="l-howto-stage">
           <div class="l-howto-doc">
@@ -308,7 +308,7 @@
       <ol class="l-howto-steps">
         <li><b>Select</b> text on any page.</li>
         <li><b>Right-click → “Clip selection to LANA”</b> (or use the clip button at the top of Captured).</li>
-        <li>It lands in <b>Captured</b> — open it, file it to a matter, or remember it.</li>
+        <li>It lands in <b>Captured</b>. Open it, file it to a matter, or remember it.</li>
       </ol>
       <button class="l-btn l-btn-primary l-btn-full" id="l-howto-close">Got it</button>
     </div>
@@ -431,10 +431,10 @@
     <div class="hint-box">
       <strong>Supported formats:</strong>
       <ul>
-        <li>ChatGPT — .zip export</li>
-        <li>Claude — .zip or .json export</li>
-        <li>Gemini — .json from Google Takeout</li>
-        <li>Copilot — .csv or .json export</li>
+        <li>ChatGPT: .zip export</li>
+        <li>Claude: .zip or .json export</li>
+        <li>Gemini: .json from Google Takeout</li>
+        <li>Copilot: .csv or .json export</li>
       </ul>
     </div>
 
