@@ -626,7 +626,13 @@ async function openReader(id) {
   $('#l-reader-title').textContent = it.title || 'Clip';
   const src = $('#l-reader-src');
   src.hidden = !canPage;
-  if (canPage) src.innerHTML = `<span class="l-ilink" id="l-reader-openpage" role="link" tabindex="0" title="Open the page with this highlighted">${esc(it.url)}</span>`;
+  if (canPage) {
+    // Clean, readable source label (host + path, no tracking query string); full URL on hover.
+    let label = it.url;
+    try { const u = new URL(it.url); label = u.hostname.replace(/^www\./, '') + (u.pathname && u.pathname !== '/' ? u.pathname : ''); } catch { /* raw */ }
+    if (label.length > 46) label = label.slice(0, 46) + '…';
+    src.innerHTML = `<span class="l-ilink" id="l-reader-openpage" role="link" tabindex="0" title="${esc(it.url)}">${esc(label)}${PAGE_SVG}</span>`;
+  }
   $('#l-reader-body').textContent = clipFullText(it) || '(no text captured)';
   $('#l-reader-actions').innerHTML =
     `<button class="l-btn l-btn-primary" id="l-reader-file">Attach to matter</button>` +
