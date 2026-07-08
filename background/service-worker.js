@@ -9,6 +9,7 @@ import { login as lanaLogin, clearAuth as lanaLogout, adoptCookieSession, getAut
 import {
   listMatters, sendKnowledge, sendMemory, sendDocument,
   getMemoryPreference, setMemoryPreference, suggestMatters,
+  deleteMemory, deleteMatterKnowledge,
 } from '../lib/lana-client.js';
 import { route as routeTask } from '../lib/router.js';
 // Capability modules.
@@ -155,6 +156,7 @@ const EXTENSION_ONLY_MESSAGES = new Set([
   'LANA_INSTANCE_GET', 'LANA_INSTANCE_SET', 'LANA_AUTH_STATE', 'LANA_AUTHORIZE',
   'LANA_LOGIN', 'LANA_ADOPT_COOKIE', 'LANA_LOGOUT', 'LANA_LIST_MATTERS', 'LANA_SEND_KNOWLEDGE',
   'LANA_SEND_MEMORY', 'LANA_GET_MEMORY_PREF', 'LANA_SET_MEMORY_PREF', 'LANA_SUGGEST_MATTERS',
+  'LANA_DELETE_MEMORY', 'LANA_DELETE_KNOWLEDGE',
   'LANA_SEND_DOCUMENT', 'LANA_ROUTE', 'LANA_HANDOFF', 'LANA_CLIP_SELECTION',
   'LANA_IMPORT', 'LANA_SURFACE', 'LANA_PROPOSE_FILLS',
 ]);
@@ -377,6 +379,12 @@ async function handleMessage(message, sender) {
 
     case 'LANA_SEND_MEMORY':
       return await sendMemory({ fact: message.fact, matterId: message.matterId });
+
+    case 'LANA_DELETE_MEMORY':
+      return { ok: await deleteMemory(message.id) };
+
+    case 'LANA_DELETE_KNOWLEDGE':
+      return await deleteMatterKnowledge(message.matterId, message.sourceId);
 
     case 'LANA_GET_MEMORY_PREF':
       return await getMemoryPreference();

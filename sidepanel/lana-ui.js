@@ -585,12 +585,37 @@ function openGroupInPage(url) {
   openHighlighted(url, texts);
 }
 
-/** Delete a captured item (clip/chat/import) from the device, with a confirm. */
+/** Human phrase for what a capture pushed to the account (for the cascade prompt). */
+function cascadeDesc(memN, fileN) {
+  const parts = [];
+  if (memN) parts.push(`${memN} ${memN === 1 ? 'memory' : 'memories'}`);
+  if (fileN) parts.push(`${fileN} ${fileN === 1 ? 'matter' : 'matters'}`);
+  return parts.join(' + ');
+}
+
+/** Remove the backend records a capture created (memories by id, knowledge by source). */
+async function cascadeDeleteBackend(it) {
+  const c = it._c || {};
+  for (const m of (c.lanaMemories || [])) {
+    if (m && m.id) { try { await chrome.runtime.sendMessage({ type: 'LANA_DELETE_MEMORY', id: m.id }); } catch { /* best-effort */ } }
+  }
+  for (const f of (c.lanaFilings || [])) {
+    if (f && f.matterId) { try { await chrome.runtime.sendMessage({ type: 'LANA_DELETE_KNOWLEDGE', matterId: f.matterId, sourceId: String(it.id) }); } catch { /* best-effort */ } }
+  }
+}
+
+/** Delete a captured item from the device, optionally cascading to the account. */
 async function deleteCaptured(id) {
   const items = await getCapturedItems();
   const it = items.find((x) => String(x.id) === String(id));
   const label = it ? it.title : 'this item';
-  if (!(await confirmSheet({ title: 'Delete from Captured?', message: `“${label}” will be removed from this device.`, confirmLabel: 'Delete', danger: true }))) return false;
+  const memN = it?._c?.lanaMemories?.length || 0;
+  const fileN = it?._c?.lanaFilings?.length || 0;
+  const hasBackend = memN + fileN > 0;
+  const opts = { title: 'Delete from Captured?', message: `“${label}” will be removed from this device.`, confirmLabel: 'Delete', danger: true };
+  if (hasBackend) opts.checkboxLabel = `Also remove from my LANA account (${cascadeDesc(memN, fileN)})`;
+  if (!(await confirmSheet(opts))) return false;
+  const alsoBackend = hasBackend && _lastConfirmChecked;
   try {
     await dbDelete('conversations', id);
     // Clean up any summaries tied to this conversation (AI chats), like the legacy path.
@@ -598,6 +623,7 @@ async function deleteCaptured(id) {
       const sums = await dbGetByIndex('summaries', 'conversationId', id);
       for (const s of sums) await dbDelete('summaries', s.id);
     } catch { /* no summaries index or none for this item (e.g. a clip) */ }
+    if (alsoBackend && it) await cascadeDeleteBackend(it); // revoke memories + matter knowledge
     chrome.runtime.sendMessage({ type: 'DATA_CHANGED' }).catch(() => {});
     renderCaptured();
     return true;
@@ -776,16 +802,20 @@ function closeModal(result) {
   _modalResolve = null;
   if (r) r(result);
 }
-/** Styled confirm / alert (pass cancelLabel:null for an alert). → Promise<boolean>. */
-function confirmSheet({ title = 'Are you sure?', message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+/** Whether the last confirmSheet's optional checkbox was ticked. */
+let _lastConfirmChecked = false;
+/** Styled confirm / alert (cancelLabel:null → alert; checkboxLabel → an opt-in). → Promise<boolean>. */
+function confirmSheet({ title = 'Are you sure?', message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false, checkboxLabel = null } = {}) {
   return new Promise((resolve) => {
-    _modalResolve = resolve; _modalDismiss = false;
+    _modalResolve = resolve; _modalDismiss = false; _lastConfirmChecked = false;
     $('#l-modal-title').textContent = title;
     const msg = $('#l-modal-msg'); msg.textContent = message; msg.hidden = !message;
-    $('#l-modal-field').innerHTML = '';
+    $('#l-modal-field').innerHTML = checkboxLabel
+      ? `<label class="l-row" style="cursor:pointer;font-size:12.5px;color:var(--l-dim);align-items:flex-start"><input type="checkbox" id="l-modal-check" style="width:15px;height:15px;accent-color:var(--l-accent);flex:0 0 auto;margin-top:1px"><span>${esc(checkboxLabel)}</span></label>`
+      : '';
     const ok = $('#l-modal-ok'); ok.textContent = confirmLabel; ok.className = `l-btn l-btn-full ${danger ? 'l-btn-danger' : 'l-btn-primary'}`;
     const cancel = $('#l-modal-cancel'); cancel.hidden = !cancelLabel; cancel.textContent = cancelLabel || 'Cancel';
-    ok.onclick = () => closeModal(true);
+    ok.onclick = () => { _lastConfirmChecked = !!$('#l-modal-check')?.checked; closeModal(true); };
     cancel.onclick = () => closeModal(false);
     $('#l-modal-scrim').hidden = false;
     ok.focus();
