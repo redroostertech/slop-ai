@@ -1,0 +1,148 @@
+<title>LANA AI — Answers grounded in your own sources</title>
+<style>
+  :root{
+    --ground:#0e0e10; --tile:#161616; --surface:#1e1f24; --raised:#26272d;
+    --line:#2a2b31; --line-soft:#232429;
+    --ink:#f5f5f4; --dim:#8a8b91; --faint:#63646b;
+    --blue:#3067ff; --blue-hi:#5b83ff; --blue-soft:rgba(48,103,255,.16);
+    --green:#35c07f; --amber:#e0a23c;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,Menlo,monospace;
+    --loop:9.4s;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1000px 600px at 30% 8%, rgba(48,103,255,.15), transparent 62%),
+      radial-gradient(820px 560px at 92% 100%, rgba(53,192,127,.08), transparent 60%),
+      var(--ground);
+    color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    min-height:100%; display:grid; place-items:center; overflow:hidden;
+  }
+  .frame{width:min(96vw,1180px); aspect-ratio:16/9; position:relative; display:flex; flex-direction:column; padding:32px 40px 28px}
+
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:32px;height:32px;border-radius:9px;display:block;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  .wm{font-size:14px;font-weight:600;letter-spacing:.42em;padding-left:.42em}
+  .kick{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+
+  .stage{flex:1;position:relative;margin-top:14px}
+  .cols{position:absolute;inset:0;display:grid;grid-template-columns:0.9fr 1.1fr;gap:6%;align-items:center}
+
+  /* left: your sources */
+  .sources{display:flex;flex-direction:column;gap:12px;position:relative}
+  .collabel{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--faint);display:flex;align-items:center;gap:8px;margin-bottom:2px}
+  .collabel .lk{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(53,192,127,.16)}
+  .src{
+    background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:12px 13px;
+    display:flex;flex-direction:column;gap:8px;opacity:0;transform:translateX(-14px);
+  }
+  .src .top{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}
+  .src .top .ic{width:15px;height:15px;border-radius:4px;background:var(--raised);display:grid;place-items:center;font-size:9px}
+  .src .top .kind{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--faint)}
+  .src .ln{height:6px;border-radius:4px;background:var(--raised)}
+  .src .ln.a{width:100%}.src .ln.b{width:78%}
+  .src.s1{animation:srcIn var(--loop) both;animation-delay:.15s}
+  .src.s2{animation:srcIn var(--loop) both;animation-delay:.35s}
+  .src.s3{animation:srcIn var(--loop) both;animation-delay:.55s}
+  /* the cited source lights up */
+  .src.cited{position:relative}
+  .src.cited .glow{position:absolute;inset:-1px;border-radius:12px;border:1px solid var(--blue);box-shadow:0 0 26px var(--blue-soft);opacity:0;animation:citeGlow var(--loop) both}
+  .src.cited .kind{color:var(--blue-hi)}
+
+  /* grounding beam */
+  .beam{position:absolute;left:40%;top:50%;width:26%;height:2px;transform-origin:left center;
+    transform:rotate(7deg) scaleX(0);
+    background:linear-gradient(90deg,rgba(48,103,255,0),var(--blue-hi) 60%,#cdd9ff);
+    opacity:0;z-index:5;animation:beam var(--loop) both;border-radius:2px}
+  .beam::after{content:"";position:absolute;right:-3px;top:50%;width:9px;height:9px;border-radius:50%;
+    background:#eaf0ff;box-shadow:0 0 12px var(--blue-hi);transform:translateY(-50%)}
+
+  /* right: the chat / answer */
+  .chat{display:flex;flex-direction:column;gap:14px;max-width:440px}
+  .q{align-self:flex-end;max-width:80%;background:var(--raised);border:1px solid var(--line);border-radius:14px 14px 4px 14px;
+    padding:11px 14px;font-size:13.5px;color:var(--ink);opacity:0;transform:translateY(8px);animation:qin var(--loop) both}
+  .a{
+    position:relative;background:var(--tile);border:1px solid var(--line);border-radius:14px 14px 14px 4px;
+    padding:15px 16px 14px;opacity:0;transform:translateY(10px);animation:ain var(--loop) both;box-shadow:0 20px 50px rgba(0,0,0,.4)
+  }
+  .a .who{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .a .who .m{width:18px;height:18px;border-radius:5px;background:var(--surface)}
+  .a .who .n{font-size:11.5px;font-weight:650;letter-spacing:.02em}
+  .a .who .badge{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--green);
+    border:1px solid rgba(53,192,127,.3);background:rgba(53,192,127,.1);border-radius:999px;padding:2px 8px}
+  .a p{font-size:13.5px;line-height:1.5;color:#e7e7e6}
+  .a p b{color:#fff;font-weight:650}
+  .a .rev{opacity:0;animation:reveal var(--loop) both}
+  .a .rev.r1{animation-delay:0s}.a .rev.r2{animation-delay:0s}
+  .cite{
+    display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-size:11.5px;font-weight:600;color:var(--blue-hi);
+    background:var(--blue-soft);border:1px solid rgba(48,103,255,.34);border-radius:999px;padding:5px 11px;
+    opacity:0;transform:translateY(4px);animation:citein var(--loop) both
+  }
+  .cite .q2{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.06em}
+
+  /* contrast footnote: the generic alternative, struck out */
+  .contrast{position:absolute;right:0;bottom:-6%;font-size:11px;color:var(--faint);opacity:0;animation:contrast var(--loop) both}
+  .contrast s{color:#4a4b51}
+
+  .tagline{position:absolute;left:40px;bottom:24px;max-width:66%;opacity:0;transform:translateY(8px);animation:tag var(--loop) both}
+  .tagline h1{font-size:25px;font-weight:680;letter-spacing:-.02em;line-height:1.1;text-wrap:balance}
+  .tagline h1 .b{color:var(--blue-hi)}
+  .tagline p{margin-top:7px;font-size:13px;color:var(--dim)}
+
+  /* ---- shared 9.4s timeline ---- */
+  @keyframes srcIn{0%{opacity:0;transform:translateX(-14px)}9%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes qin{0%,22%{opacity:0;transform:translateY(8px)}28%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes ain{0%,34%{opacity:0;transform:translateY(10px)}42%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes reveal{0%,44%{opacity:0}52%,92%{opacity:1}100%{opacity:0}}
+  @keyframes beam{0%,56%{opacity:0;transform:rotate(7deg) scaleX(0)}62%{opacity:1}66%,80%{opacity:1;transform:rotate(7deg) scaleX(1)}88%,100%{opacity:0}}
+  @keyframes citeGlow{0%,60%{opacity:0}67%,86%{opacity:1}100%{opacity:0}}
+  @keyframes citein{0%,64%{opacity:0;transform:translateY(4px)}70%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes contrast{0%,74%{opacity:0}82%,93%{opacity:1}100%{opacity:0}}
+  @keyframes tag{0%,72%{opacity:0;transform:translateY(8px)}80%,93%{opacity:1;transform:none}100%{opacity:0}}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important}
+    .src,.q,.a,.rev,.cite,.tagline,.contrast,.src.cited .glow{opacity:1;transform:none}
+    .beam{opacity:1;transform:rotate(7deg) scaleX(1)}
+  }
+</style>
+
+<div class="frame">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="26" fill="#161616"/><g fill="none" stroke="#f5f5f4" stroke-width="7" stroke-linecap="square"><path d="M24,46 L24,24 L46,24"/><path d="M76,54 L76,76 L54,76"/></g></svg>
+    <span class="wm">L A N A&nbsp;&nbsp;A I</span>
+    <span class="kick">what makes it different</span>
+  </div>
+
+  <div class="stage">
+    <div class="cols">
+      <!-- your sources -->
+      <div class="sources">
+        <div class="collabel"><span class="lk"></span>YOUR MATTER · ON YOUR DEVICE</div>
+        <div class="src s1"><div class="top"><span class="ic">📄</span><span>Research memo</span><span class="kind" style="margin-left:auto">CLIP</span></div><div class="ln a"></div><div class="ln b"></div></div>
+        <div class="src s2 cited"><span class="glow"></span><div class="top"><span class="ic">§</span><span>Ga. Code § 53-12-243</span><span class="kind" style="margin-left:auto">CLIP</span></div><div class="ln a"></div><div class="ln b"></div></div>
+        <div class="src s3"><div class="top"><span class="ic">✉</span><span>Client email</span><span class="kind" style="margin-left:auto">CLIP</span></div><div class="ln a"></div><div class="ln b"></div></div>
+      </div>
+
+      <!-- chat -->
+      <div class="chat">
+        <div class="q">Does the 2019 amendment change the trustee's duty to inform?</div>
+        <div class="a">
+          <div class="who"><span class="m"></span><span class="n">LANA</span><span class="badge">GROUNDED</span></div>
+          <p><span class="rev r1">Yes. Under the section you clipped, the trustee's duty to inform now reaches </span><span class="rev r2"><b>remainder beneficiaries</b>, not just current ones.</span></p>
+          <span class="cite">↳ Grounded in your clip <span class="q2">Ga. Code § 53-12-243</span></span>
+        </div>
+        <div class="contrast">Generic AI: <s>“the answer may vary by jurisdiction…”</s></div>
+      </div>
+    </div>
+    <div class="beam"></div>
+  </div>
+
+  <div class="tagline">
+    <h1>Answers grounded in <span class="b">your own sources</span>.</h1>
+    <p>Not the open web. Every reply cites the material you captured, and it never leaves your device.</p>
+  </div>
+</div>

@@ -1,0 +1,203 @@
+<title>LANA AI — Clip anything into your matters</title>
+<style>
+  :root{
+    --ground:#0e0e10; --tile:#161616; --surface:#1e1f24; --raised:#26272d;
+    --line:#2a2b31; --line-soft:#232429;
+    --ink:#f5f5f4; --dim:#8a8b91; --faint:#63646b;
+    --blue:#3067ff; --blue-hi:#5b83ff; --blue-soft:rgba(48,103,255,.16);
+    --green:#35c07f;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,Menlo,monospace;
+    --loop:8.6s;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 620px at 68% 14%, rgba(48,103,255,.16), transparent 60%),
+      radial-gradient(760px 520px at 12% 96%, rgba(53,192,127,.07), transparent 60%),
+      var(--ground);
+    color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    min-height:100%; display:grid; place-items:center; overflow:hidden;
+  }
+  .frame{
+    width:min(96vw,1180px); aspect-ratio:16/9; position:relative;
+    display:flex; flex-direction:column; padding:34px 40px 30px;
+  }
+
+  /* brand bar */
+  .brand{display:flex; align-items:center; gap:12px}
+  .mark{width:34px;height:34px;border-radius:9px;background:var(--tile);display:block;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  .wm{font-size:15px;font-weight:600;letter-spacing:.42em;padding-left:.42em}
+  .kick{margin-left:auto;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+
+  /* stage */
+  .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;gap:0}
+  .scene{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+
+  /* browser / article */
+  .browser{
+    position:absolute; left:2%; top:12%; width:56%; height:74%;
+    background:#faf9f6; border-radius:14px; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.55), 0 2px 0 rgba(255,255,255,.04) inset;
+    animation:sceneIn var(--loop) both;
+  }
+  .btop{height:34px;background:#eeece6;display:flex;align-items:center;gap:6px;padding:0 13px;border-bottom:1px solid #e2e0d8}
+  .dot{width:9px;height:9px;border-radius:50%;background:#d4d2c9}
+  .urlbar{margin-left:10px;height:16px;flex:1;max-width:240px;background:#fff;border-radius:8px;border:1px solid #e2e0d8}
+  .doc{padding:26px 26px 0;display:flex;flex-direction:column;gap:13px}
+  .h{height:15px;width:66%;border-radius:5px;background:#26262a}
+  .ln{height:9px;border-radius:5px;background:#d8d6ce}
+  .ln.s{width:92%}.ln.m{width:97%}.ln.k{width:78%}
+  /* selectable passage */
+  .sel{position:relative;display:flex;flex-direction:column;gap:9px;margin-top:5px;padding:9px 8px;border-radius:8px}
+  .sel .ln{background:#cfcdc4}
+  .selhl{position:absolute;inset:0;border-radius:8px;background:rgba(48,103,255,.20);border:1px solid rgba(48,103,255,.5);transform-origin:left center;transform:scaleX(0);animation:sweep var(--loop) both}
+  /* context menu */
+  .menu{
+    position:absolute; left:20%; top:60%; display:flex; align-items:center; gap:9px;
+    background:#17181c; color:#f5f5f4; font-size:13px; font-weight:600; padding:9px 13px;
+    border-radius:9px; white-space:nowrap; box-shadow:0 16px 40px rgba(0,0,0,.5);
+    border:1px solid #2c2d34; opacity:0; transform:translateY(6px) scale(.96);
+    animation:menu var(--loop) both;
+  }
+  .menu .sc{color:var(--blue-hi)}
+  .menu .kbd{margin-left:4px;font-family:var(--mono);font-size:10px;color:var(--faint)}
+  /* cursor */
+  .cursor{position:absolute;width:20px;height:20px;left:24%;top:40%;z-index:6;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));animation:cursor var(--loop) both}
+  .cursor svg{display:block}
+  .click{position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;border:2px solid var(--blue-hi);transform:translate(-30%,-30%) scale(0);opacity:0;animation:click var(--loop) both}
+
+  /* flying clip */
+  .fly{
+    position:absolute; left:24%; top:46%; width:210px; padding:11px 13px; border-radius:11px;
+    background:linear-gradient(180deg,#20222a,#191a20); border:1px solid var(--blue);
+    box-shadow:0 22px 55px rgba(48,103,255,.28), 0 3px 0 rgba(255,255,255,.03) inset;
+    opacity:0; transform:scale(.7); z-index:7; animation:fly var(--loop) both;
+  }
+  .fly .fl{height:7px;border-radius:4px;background:#3a3c45;margin-bottom:7px}
+  .fly .fl.a{width:100%}.fly .fl.b{width:82%}.fly .fl.c{width:60%;margin-bottom:0}
+  .fly .tag{position:absolute;top:-9px;left:12px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--blue-hi);background:var(--ground);padding:0 6px}
+
+  /* LANA panel */
+  .panel{
+    position:absolute; right:2%; top:8%; width:33%; height:84%;
+    background:var(--tile); border:1px solid var(--line); border-radius:16px; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.5); display:flex; flex-direction:column;
+    animation:sceneIn var(--loop) both; animation-delay:.12s;
+  }
+  .ptop{display:flex;align-items:center;gap:9px;padding:14px 15px;border-bottom:1px solid var(--line-soft)}
+  .ptop .m{width:19px;height:19px;border-radius:5px;background:var(--surface)}
+  .ptop .t{font-size:13px;font-weight:650}
+  .ptop .c{margin-left:auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;background:var(--surface);border-radius:999px;padding:2px 9px}
+  .plabel{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--faint);padding:14px 15px 8px}
+  .pbody{padding:0 13px;display:flex;flex-direction:column;gap:10px}
+  .card{
+    background:var(--surface); border:1px solid var(--line-soft); border-radius:11px; padding:12px;
+    opacity:0; transform:translateY(10px); animation:land var(--loop) both;
+  }
+  .card .ct{font-size:12px;font-weight:650;margin-bottom:7px}
+  .card .cl{height:6px;border-radius:4px;background:var(--raised);margin-bottom:6px}
+  .card .cl.x{width:94%}.card .cl.y{width:70%;margin-bottom:0}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;font-weight:600;
+    color:var(--green); background:rgba(53,192,127,.12); border:1px solid rgba(53,192,127,.28);
+    border-radius:999px; padding:4px 10px; opacity:0; transform:translateY(4px); animation:chip var(--loop) both;
+  }
+  .chip .d{width:6px;height:6px;border-radius:50%;background:var(--green)}
+
+  /* tagline */
+  .tag-line{
+    position:absolute; left:40px; bottom:26px; max-width:60%;
+    opacity:0; transform:translateY(8px); animation:tag var(--loop) both;
+  }
+  .tag-line h1{font-size:26px;font-weight:680;letter-spacing:-.02em;line-height:1.08;text-wrap:balance}
+  .tag-line p{margin-top:8px;font-size:13.5px;color:var(--dim)}
+  .tag-line .accent{color:var(--blue-hi)}
+
+  /* ---- one shared 8.6s timeline ---- */
+  @keyframes sceneIn{0%{opacity:0;transform:translateY(10px)}5%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes cursor{
+    0%,6%{left:24%;top:40%}
+    16%{left:20%;top:44%}
+    22%{left:33%;top:52%}     /* drag across the passage */
+    30%{left:20%;top:64%}     /* to the menu item */
+    34%{left:20%;top:64%}
+    46%{left:24%;top:46%}
+    92%,100%{left:24%;top:46%;opacity:0}
+  }
+  @keyframes click{30%{opacity:0;transform:translate(-30%,-30%) scale(0)}33%{opacity:.9;transform:translate(-30%,-30%) scale(1)}40%{opacity:0;transform:translate(-30%,-30%) scale(1.4)}0%,100%{opacity:0}}
+  @keyframes sweep{0%,10%{transform:scaleX(0)}22%,92%{transform:scaleX(1)}100%{opacity:0}}
+  @keyframes menu{0%,22%{opacity:0;transform:translateY(6px) scale(.96)}27%,44%{opacity:1;transform:translateY(0) scale(1)}50%,100%{opacity:0}}
+  @keyframes fly{
+    0%,44%{opacity:0;left:24%;top:46%;transform:scale(.7);filter:blur(0)}
+    48%{opacity:1;transform:scale(1)}
+    60%{opacity:1;left:52%;top:30%;transform:scale(.9) rotate(-3deg)}
+    68%{opacity:1;left:70%;top:34%;transform:scale(.62) rotate(0)}
+    71%,100%{opacity:0}
+  }
+  @keyframes land{0%,68%{opacity:0;transform:translateY(10px)}75%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes chip{0%,80%{opacity:0;transform:translateY(4px)}86%,92%{opacity:1;transform:none}100%{opacity:0}}
+  @keyframes tag{0%,74%{opacity:0;transform:translateY(8px)}82%,93%{opacity:1;transform:none}100%{opacity:0}}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important}
+    .selhl{transform:scaleX(1)} .fly{display:none} .cursor,.click,.menu{opacity:0}
+    .card,.chip,.tag-line{opacity:1;transform:none}
+  }
+</style>
+
+<div class="frame">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="26" fill="#161616"/><g fill="none" stroke="#f5f5f4" stroke-width="7" stroke-linecap="square"><path d="M24,46 L24,24 L46,24"/><path d="M76,54 L76,76 L54,76"/></g></svg>
+    <span class="wm">L A N A&nbsp;&nbsp;A I</span>
+    <span class="kick">browser extension</span>
+  </div>
+
+  <div class="stage">
+    <div class="scene">
+      <!-- article -->
+      <div class="browser">
+        <div class="btop"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar"></span></div>
+        <div class="doc">
+          <div class="h"></div>
+          <div class="ln s"></div>
+          <div class="sel">
+            <span class="selhl"></span>
+            <div class="ln m"></div>
+            <div class="ln s"></div>
+            <div class="ln k"></div>
+          </div>
+          <div class="ln m"></div>
+          <div class="ln k"></div>
+          <div class="menu"><span class="sc">✂</span> Clip selection to LANA <span class="kbd">⌘⇧L</span></div>
+        </div>
+        <div class="cursor">
+          <svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 20 5 3z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          <span class="click"></span>
+        </div>
+      </div>
+
+      <!-- flying clip -->
+      <div class="fly"><span class="tag">CLIP</span><div class="fl a"></div><div class="fl b"></div><div class="fl c"></div></div>
+
+      <!-- panel -->
+      <div class="panel">
+        <div class="ptop"><span class="m"></span><span class="t">Captured</span><span class="c">1</span></div>
+        <div class="plabel">ON YOUR DEVICE</div>
+        <div class="pbody">
+          <div class="card">
+            <div class="ct">Clipped from research</div>
+            <div class="cl x"></div><div class="cl x"></div><div class="cl y"></div>
+            <span class="chip"><span class="d"></span>Filed to matter</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tag-line">
+    <h1>Clip anything into <span class="accent">your matters</span>.</h1>
+    <p>Select on any page. It becomes grounded, citable context — private, on your device.</p>
+  </div>
+</div>
