@@ -417,7 +417,8 @@ async function renderCaptured() {
   });
   $('#l-captured-count').textContent = `${items.length}`;
   if (!filtered.length) {
-    list.innerHTML = `<div class="l-emptynote">Nothing captured here yet.<br>Your ChatGPT/Claude sessions and clips will appear as you browse.</div>`;
+    list.innerHTML = `<div class="l-emptynote">Nothing captured yet.<br>Clip text from <b>any</b> web page — and your ChatGPT / Claude / Gemini chats are captured automatically as you browse.<div style="margin-top:14px"><button class="l-btn l-btn-ghost" id="l-howto-clip-empty">▶ How to clip</button></div></div>`;
+    $('#l-howto-clip-empty')?.addEventListener('click', openHowTo);
     return;
   }
   const matters = await getMatters();
@@ -684,6 +685,10 @@ function closeReader() {
   const s = $('#l-reader-scrim');
   if (s) s.hidden = true;
 }
+
+/** How-to-clip walkthrough (animated demo). */
+function openHowTo() { const s = $('#l-howto-scrim'); if (s) s.hidden = false; }
+function closeHowTo() { const s = $('#l-howto-scrim'); if (s) s.hidden = true; }
 
 /** Live Memory gate — prefer fresh storage, fall back to the module cache. */
 async function memoryEnabled() {
@@ -1176,6 +1181,12 @@ async function consumePendingClipReview() {
 
 function wireClipReview() {
   $('#l-clip-selection')?.addEventListener('click', (e) => clipCurrentSelection(e.currentTarget));
+  // How-to-clip walkthrough: info icon in the subbar + close/backdrop/Esc.
+  $('#l-howto-clip')?.addEventListener('click', openHowTo);
+  $('#l-howto-close')?.addEventListener('click', closeHowTo);
+  const howtoScrim = $('#l-howto-scrim');
+  howtoScrim?.addEventListener('click', (e) => { if (e.target === howtoScrim) closeHowTo(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !howtoScrim?.hidden) closeHowTo(); });
   const scrim = $('#l-clip-scrim');
   scrim?.addEventListener('click', (e) => { if (e.target === scrim) closeClipReview(); });
   // Full-panel clip reader: back button + Esc to close.

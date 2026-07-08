@@ -77,6 +77,7 @@
         <span class="l-count" id="l-captured-count">0</span>
         <span class="l-sp"></span>
         <button class="l-tbtn" id="l-clip-selection" title="Clip the current selection on this page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg></button>
+        <button class="l-tbtn" id="l-howto-clip" title="How to clip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
       </div>
       <div class="l-segbar" id="l-captured-segs">
         <button class="l-seg on" data-lseg="all">All</button>
@@ -280,6 +281,36 @@
         <button class="l-btn l-btn-primary l-btn-full" id="l-modal-ok">OK</button>
         <button class="l-btn l-btn-ghost l-btn-full" id="l-modal-cancel">Cancel</button>
       </div>
+    </div>
+  </div>
+  <!-- How-to-clip walkthrough (animated demo) -->
+  <div class="l-scrim" id="l-howto-scrim" hidden>
+    <div class="l-sheet">
+      <div class="l-grab"></div>
+      <h2>How to clip</h2>
+      <p class="desc">Save text from <b>any</b> web page into LANA — then file it to a matter or remember it. (Your ChatGPT / Claude / Gemini chats are captured automatically as you browse.)</p>
+      <div class="l-howto-demo" aria-hidden="true">
+        <div class="l-howto-stage">
+          <div class="l-howto-doc">
+            <div class="l-howto-ln"></div>
+            <div class="l-howto-ln sel"><span class="l-howto-hl"></span></div>
+            <div class="l-howto-ln"></div>
+            <div class="l-howto-ln sh"></div>
+            <div class="l-howto-menu"><span>✂</span> Clip selection to LANA</div>
+          </div>
+          <div class="l-howto-fly"></div>
+          <div class="l-howto-mini">
+            <div class="l-howto-minihead">CAPTURED</div>
+            <div class="l-howto-card"></div>
+          </div>
+        </div>
+      </div>
+      <ol class="l-howto-steps">
+        <li><b>Select</b> text on any page.</li>
+        <li><b>Right-click → “Clip selection to LANA”</b> (or use the clip button at the top of Captured).</li>
+        <li>It lands in <b>Captured</b> — open it, file it to a matter, or remember it.</li>
+      </ol>
+      <button class="l-btn l-btn-primary l-btn-full" id="l-howto-close">Got it</button>
     </div>
   </div>
   </div><!-- /.lana-shell -->

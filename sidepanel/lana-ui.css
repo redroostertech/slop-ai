@@ -133,6 +133,64 @@
 .l-btn-ghost { background: var(--l-surface-2); color: var(--l-text); border-color: var(--l-border); }
 .l-btn-ghost:hover { background: var(--l-raised); }
 .l-btn-ghost.done { color: var(--l-ok); border-color: var(--l-ok-soft); } /* remembered / filed state */
+
+/* ===================== How-to-clip animated demo ===================== */
+.l-howto-demo { margin: 6px 0 16px; }
+.l-howto-stage {
+  position: relative; height: 150px; padding: 12px; display: flex; gap: 12px; align-items: stretch;
+  background: var(--l-surface-2); border: 1px solid var(--l-border); border-radius: 12px; overflow: hidden;
+}
+.l-howto-doc {
+  position: relative; flex: 1; background: #fbfbf9; border-radius: 8px;
+  padding: 14px 12px; display: flex; flex-direction: column; gap: 9px;
+}
+.l-howto-ln { height: 7px; border-radius: 3px; background: #dad9d3; }
+.l-howto-ln.sh { width: 55%; }
+.l-howto-ln.sel { position: relative; background: #cfcec7; }
+.l-howto-hl {
+  position: absolute; inset: -3px -3px; border-radius: 4px; background: rgba(48,103,255,0.38);
+  transform-origin: left center; transform: scaleX(0); animation: l-howto-sel 5s ease-in-out infinite;
+}
+@keyframes l-howto-sel { 0%,6%{transform:scaleX(0)} 20%,100%{transform:scaleX(1)} }
+.l-howto-menu {
+  position: absolute; left: 24px; top: 52px; display: inline-flex; align-items: center; gap: 6px;
+  background: #1e1f24; color: #f5f5f4; font-size: 10.5px; font-weight: 600; padding: 6px 9px;
+  border-radius: 7px; box-shadow: 0 8px 22px rgba(0,0,0,.4); white-space: nowrap;
+  opacity: 0; transform: translateY(5px) scale(.96); animation: l-howto-menu 5s ease-in-out infinite;
+}
+@keyframes l-howto-menu {
+  0%,24%{opacity:0;transform:translateY(5px) scale(.96)}
+  30%,50%{opacity:1;transform:translateY(0) scale(1)}
+  58%,100%{opacity:0}
+}
+.l-howto-fly {
+  position: absolute; left: 42%; top: 52px; width: 26px; height: 15px; border-radius: 4px;
+  background: var(--l-accent); box-shadow: 0 4px 12px var(--l-accent-soft); opacity: 0;
+  animation: l-howto-fly 5s ease-in-out infinite;
+}
+@keyframes l-howto-fly {
+  0%,52%{opacity:0;left:42%;top:52px;transform:scale(.5)}
+  57%{opacity:1;transform:scale(1)}
+  74%{opacity:1;left:calc(100% - 66px);top:58px;transform:scale(.55)}
+  78%,100%{opacity:0}
+}
+.l-howto-mini {
+  flex: 0 0 84px; background: var(--l-bg); border: 1px solid var(--l-border);
+  border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+}
+.l-howto-minihead { font-size: 8.5px; font-weight: 800; letter-spacing: .08em; color: var(--l-faint); }
+.l-howto-card {
+  height: 30px; border-radius: 6px; background: var(--l-surface-2); border: 1px solid var(--l-accent-line);
+  opacity: 0; transform: translateY(6px); animation: l-howto-card 5s ease-in-out infinite;
+}
+@keyframes l-howto-card { 0%,74%{opacity:0;transform:translateY(6px)} 80%,100%{opacity:1;transform:translateY(0)} }
+.l-howto-steps { margin: 4px 0 16px; padding-left: 20px; font-size: 12.5px; color: var(--l-dim); line-height: 1.7; }
+.l-howto-steps b { color: var(--l-text); }
+@media (prefers-reduced-motion: reduce) {
+  .l-howto-hl { animation: none; transform: scaleX(1); }
+  .l-howto-menu, .l-howto-card { animation: none; opacity: 1; transform: none; }
+  .l-howto-fly { animation: none; opacity: 0; }
+}
 .l-btn-danger { background: transparent; border-color: rgba(229,72,77,0.35); color: #f0888b; }
 .l-btn-danger:hover { background: rgba(229,72,77,0.1); }
 .l-btn-dashed { background: transparent; border: 1px dashed var(--l-border); color: var(--l-dim); }
